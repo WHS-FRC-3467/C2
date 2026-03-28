@@ -1,0 +1,6 @@
+{
+  "device_id": "northstar",
+  "server_ip": "localhost",
+  "stream_port": 8000,
+  "num_cameras": 4
+}
