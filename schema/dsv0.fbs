@@ -1,0 +1,54 @@
+namespace dsv0;
+
+struct Vec3 {
+  x: float64;
+  y: float64;
+  z: float64;
+}
+
+struct Quaternion {
+  w: float64;
+  x: float64;
+  y: float64;
+  z: float64;
+}
+
+struct Pose3d {
+  translation: Vec3;
+  rotation: Quaternion;
+}
+
+table PoseSolution {
+  pose: Pose3d;
+  error: float64;
+}
+
+table CameraObservation {
+  /// Primary pose solution (always present)
+  solution_0: PoseSolution;
+  /// Alternate pose solution (present for single-tag ambiguity)
+  solution_1: PoseSolution;
+  /// IDs of the tags used in this observation
+  tag_ids: [int32];
+}
+
+table CameraOutput {
+  /// Microsecond timestamp (matches NT timestamp convention)
+  timestamp_us: int64;
+  /// Camera index within the multi-camera module
+  camera_index: int32;
+  /// Field-relative camera pose observation (null if no tags seen)
+  camera_observation: CameraObservation;
+  /// Frames per second (0 if not reported this cycle)
+  fps: int32;
+}
+
+/// Top-level message containing results from all cameras in a single frame
+table Frame {
+  /// Microsecond timestamp for the frame capture
+  timestamp_us: int64;
+  /// Per-camera results
+  cameras: [CameraOutput];
+}
+
+root_type Frame;
