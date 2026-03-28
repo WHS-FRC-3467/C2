@@ -1,4 +1,4 @@
-namespace northstar;
+namespace dsv0;
 
 struct Vec3 {
   x: float64;

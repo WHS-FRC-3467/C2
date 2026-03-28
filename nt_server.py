@@ -10,11 +10,11 @@ import ntcore
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "schema"))
 
-from northstar.Frame import Frame
-from northstar.Vec3 import Vec3
-from northstar.Quaternion import Quaternion
+from dsv0.Frame import Frame
+from dsv0.Vec3 import Vec3
+from dsv0.Quaternion import Quaternion
 
-DEVICE_ID = "northstar"
+DEVICE_ID = "dsv0"
 NUM_CAMERAS = 4
 
 # Minimal tag layout with a single tag for testing
@@ -122,7 +122,7 @@ if __name__ == "__main__":
     for i in range(NUM_CAMERAS):
         cam_table = inst.getTable(f"/{DEVICE_ID}/output/camera_{i}")
         obs_subs.append(cam_table.getRawTopic("observation").subscribe(
-            "northstar_fb", bytes()))
+            "dsv0_fb", bytes()))
 
     # Per-camera pose publishers (structured strings for easy viewing)
     pose_table = inst.getTable(f"/{DEVICE_ID}/poses")

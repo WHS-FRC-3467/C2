@@ -11,16 +11,16 @@ from vision_types import CameraPoseObservation
 # Add schema to path for generated flatbuffer modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "schema"))
 
-from northstar.Pose3d import CreatePose3d
-from northstar.PoseSolution import (PoseSolutionStart, PoseSolutionAddPose,
+from dsv0.Pose3d import CreatePose3d
+from dsv0.PoseSolution import (PoseSolutionStart, PoseSolutionAddPose,
                                      PoseSolutionAddError, PoseSolutionEnd)
-from northstar.CameraObservation import (CameraObservationStart, CameraObservationAddSolution0,
+from dsv0.CameraObservation import (CameraObservationStart, CameraObservationAddSolution0,
                                           CameraObservationAddSolution1, CameraObservationAddTagIds,
                                           CameraObservationStartTagIdsVector, CameraObservationEnd)
-from northstar.CameraOutput import (CameraOutputStart, CameraOutputAddTimestampUs,
+from dsv0.CameraOutput import (CameraOutputStart, CameraOutputAddTimestampUs,
                                      CameraOutputAddCameraIndex, CameraOutputAddCameraObservation,
                                      CameraOutputAddFps, CameraOutputEnd)
-from northstar.Frame import (FrameStart, FrameAddTimestampUs, FrameAddCameras,
+from dsv0.Frame import (FrameStart, FrameAddTimestampUs, FrameAddCameras,
                               FrameStartCamerasVector, FrameEnd)
 
 
@@ -107,7 +107,7 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
                 table_path = "/" + config_store.local_config.device_id + "/output"
             nt_table = ntcore.NetworkTableInstance.getDefault().getTable(table_path)
             self._frame_pub = nt_table.getRawTopic("observation").publish(
-                "northstar_fb",
+                "dsv0_fb",
                 ntcore.PubSubOptions(periodic=0, sendAll=True, keepDuplicates=True))
             self._fps_pub = nt_table.getIntegerTopic("fps").publish()
 
