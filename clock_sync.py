@@ -6,8 +6,6 @@ import ntcore
 def _nt_now_us() -> int:
     now_fn = getattr(ntcore, "_now", None)
     if now_fn is None:
-        now_fn = getattr(ntcore, "now", None)
-    if now_fn is None:
         raise RuntimeError("ntcore does not expose a current-time function")
     return int(now_fn())
 
