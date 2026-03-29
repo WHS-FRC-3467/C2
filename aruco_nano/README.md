@@ -1,7 +1,7 @@
 # 📚 ArUco Nano
 
 A minimalist, header-only, high-performance C++ library for ArUco marker detection. [Download Preprint](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6299207)
-   
+
 ## 🏛 Introduction
 
 ArUco Nano is a lightweight (single header, <500 lines) implementation of the ArUco marker detection algorithm. Designed for speed and ease of integration, it replaces general-purpose OpenCV algorithms with a specialized Visited-Aware Contour Tracing algorithm and direct sub-pixel code sampling.
@@ -33,14 +33,14 @@ The simplest way to detect markers using the default dictionary (DICT_ARUCO_MIP_
 
 int main() {
     cv::Mat image = cv::imread("image.jpg");
-    
+
     // Detect markers
     auto markers = aruco_nano::MarkerDetector::detect(image);
-    
+
     // Draw and save
-    for(const auto &m : markers) 
+    for(const auto &m : markers)
         m.draw(image);
-        
+
     cv::imwrite("output.jpg", image);
     return 0;
 }
@@ -55,19 +55,19 @@ If you have existing code using cv::aruco::ArucoDetector, you can switch to ArUc
 
 int main() {
     cv::Mat image = cv::imread("image.jpg");
-    
+
     // Use standard OpenCV dictionary
     cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_ARUCO_MIP_36h12);
-    
+
     // Initialize Nano detector with OpenCV API wrapper
     aruco_nano::ArucoDetector detector(dictionary);
-    
+
     std::vector<int> ids;
     std::vector<std::vector<cv::Point2f>> corners;
-    
+
     // Detect
     detector.detectMarkers(image, corners, ids);
-    
+
     // Draw using standard OpenCV function
     cv::aruco::drawDetectedMarkers(image, corners, ids);
     return 0;
@@ -85,7 +85,7 @@ for(const auto &m : markers){
     auto pose = m.estimatePose(cameraMatrix, distCoeffs, markerSize);
     cv::Mat rvec = pose.first;
     cv::Mat tvec = pose.second;
-    
+
     std::cout << "Rvec: " << rvec << " Tvec: " << tvec << std::endl;
 }
 ```

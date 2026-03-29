@@ -1,6 +1,5 @@
-import math
-import sys
 import os
+import sys
 from typing import List, Union
 
 import flatbuffers
@@ -25,7 +24,13 @@ from dsv0.Frame import (FrameStart, FrameAddTimestampUs, FrameAddCameras,
 
 
 class OutputPublisher:
-    def send(self, config_store: ConfigStore, timestamp: float, observation: Union[CameraPoseObservation, None], fps: Union[int, None] = None) -> None:
+    def send(
+            self,
+            config_store: ConfigStore,
+            capture_timestamp_us: int,
+            publish_timestamp_us: int,
+            observation: Union[CameraPoseObservation, None],
+            fps: Union[int, None] = None) -> None:
         raise NotImplementedError
 
 
@@ -37,7 +42,13 @@ class NTOutputPublisher(OutputPublisher):
     def __init__(self, camera_index: int = -1) -> None:
         self._camera_index = camera_index
 
-    def send(self, config_store: ConfigStore, timestamp: float, observation: Union[CameraPoseObservation, None], fps: Union[int, None] = None) -> None:
+    def send(
+            self,
+            config_store: ConfigStore,
+            capture_timestamp_us: int,
+            publish_timestamp_us: int,
+            observation: Union[CameraPoseObservation, None],
+            fps: Union[int, None] = None) -> None:
         if not self._init_complete:
             self._init_complete = True
             if self._camera_index >= 0:
@@ -74,7 +85,7 @@ class NTOutputPublisher(OutputPublisher):
                 observation_data.append(observation.pose_1.rotation().getQuaternion().Z())
             for tag_id in observation.tag_ids:
                 observation_data.append(tag_id)
-        self._observations_pub.set(observation_data, math.floor(timestamp * 1000000))
+        self._observations_pub.set(observation_data)
 
 
 def _build_pose_solution(builder, pose, error):
@@ -98,7 +109,13 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
     def __init__(self, camera_index: int = -1) -> None:
         self._camera_index = camera_index
 
-    def send(self, config_store: ConfigStore, timestamp: float, observation: Union[CameraPoseObservation, None], fps: Union[int, None] = None) -> None:
+    def send(
+            self,
+            config_store: ConfigStore,
+            capture_timestamp_us: int,
+            publish_timestamp_us: int,
+            observation: Union[CameraPoseObservation, None],
+            fps: Union[int, None] = None) -> None:
         if not self._init_complete:
             self._init_complete = True
             if self._camera_index >= 0:
@@ -114,7 +131,6 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
         if fps is not None:
             self._fps_pub.set(fps)
 
-        timestamp_us = math.floor(timestamp * 1000000)
         builder = flatbuffers.Builder(256)
 
         # Build camera observation if present
@@ -142,7 +158,7 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
 
         # Build CameraOutput
         CameraOutputStart(builder)
-        CameraOutputAddTimestampUs(builder, timestamp_us)
+        CameraOutputAddTimestampUs(builder, capture_timestamp_us)
         CameraOutputAddCameraIndex(builder, max(self._camera_index, 0))
         if cam_obs_offset is not None:
             CameraOutputAddCameraObservation(builder, cam_obs_offset)
@@ -156,11 +172,11 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
         cameras_vec = builder.EndVector()
 
         FrameStart(builder)
-        FrameAddTimestampUs(builder, timestamp_us)
+        FrameAddTimestampUs(builder, publish_timestamp_us)
         FrameAddCameras(builder, cameras_vec)
         frame = FrameEnd(builder)
 
         builder.Finish(frame)
         buf = builder.Output()
 
-        self._frame_pub.set(bytes(buf), timestamp_us)
+        self._frame_pub.set(bytes(buf))

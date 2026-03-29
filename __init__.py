@@ -8,6 +8,7 @@ import ntcore
 from calibration.CalibrationCommandSource import (CalibrationCommandSource,
                                                   NTCalibrationCommandSource)
 from calibration.CalibrationSession import CalibrationSession
+from clock_sync import NtServerClock
 from config.config import ConfigStore, LocalConfig, RemoteConfig
 from config.ConfigSource import ConfigSource, FileConfigSource, NTConfigSource
 from output.OutputPublisher import NTFlatbufferOutputPublisher, OutputPublisher
@@ -39,6 +40,7 @@ if __name__ == "__main__":
 
     ntcore.NetworkTableInstance.getDefault().setServer(config.local_config.server_ip)
     ntcore.NetworkTableInstance.getDefault().startClient4(config.local_config.device_id)
+    nt_clock = NtServerClock()
     stream_server.start(config)
     base_port = config.local_config.stream_port
     for i, raw_server in enumerate(raw_camera_servers):
@@ -51,7 +53,7 @@ if __name__ == "__main__":
     was_calibrating = False
     while True:
         remote_config_source.update(config)
-        timestamp = time.time()
+        capture_timestamp_us = nt_clock.now_us()
         t_cap0 = time.perf_counter()
         success, image = capture.get_frame(config)
         t_cap1 = time.perf_counter()
@@ -100,6 +102,11 @@ if __name__ == "__main__":
             # Collect detections, then pose estimate + publish sequentially
             all_detections = [f.result() for f in detect_futures]
             t_det = time.perf_counter()
+            publish_timestamp_us = nt_clock.now_us()
+            if capture_timestamp_us is None:
+                capture_timestamp_us = publish_timestamp_us
+            if publish_timestamp_us is None:
+                publish_timestamp_us = capture_timestamp_us
 
             for cam_idx in range(num_cameras):
                 cam_config = config.for_camera(cam_idx)
@@ -115,7 +122,13 @@ if __name__ == "__main__":
                 camera_pose_observation = camera_pose_estimator.solve_camera_pose(
                     image_observations, cam_config)
 
-                output_publishers[cam_idx].send(cam_config, timestamp, camera_pose_observation, fps if cam_idx == 0 else None)
+                if capture_timestamp_us is not None and publish_timestamp_us is not None:
+                    output_publishers[cam_idx].send(
+                        cam_config,
+                        capture_timestamp_us,
+                        publish_timestamp_us,
+                        camera_pose_observation,
+                        fps if cam_idx == 0 else None)
             t_pose = time.perf_counter()
 
             stream_server.set_frame(display_image)
