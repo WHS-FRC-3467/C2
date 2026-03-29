@@ -67,6 +67,8 @@ class NTConfigSource(ConfigSource):
     _camera_gain_sub: ntcore.IntegerSubscriber
     _fiducial_size_m_sub: ntcore.DoubleSubscriber
     _tag_layout_sub: ntcore.StringSubscriber
+    _cached_tag_layout_str: str = ""
+    _cached_tag_layout: any = None
 
     def update(self, config_store: ConfigStore) -> None:
         # Initialize subscribers on first call
@@ -95,11 +97,16 @@ class NTConfigSource(ConfigSource):
         config_store.remote_config.camera_exposure = self._camera_exposure_sub.get()
         config_store.remote_config.camera_gain = self._camera_gain_sub.get()
         config_store.remote_config.fiducial_size_m = self._fiducial_size_m_sub.get()
-        try:
-            tag_layout_str = self._tag_layout_sub.get()
-            if tag_layout_str:
-                config_store.remote_config.tag_layout = json.loads(tag_layout_str)
-            else:
-                config_store.remote_config.tag_layout = None
-        except json.JSONDecodeError:
-            config_store.remote_config.tag_layout = None
+
+        # Only re-parse tag layout JSON when the string actually changes
+        tag_layout_str = self._tag_layout_sub.get()
+        if tag_layout_str != self._cached_tag_layout_str:
+            self._cached_tag_layout_str = tag_layout_str
+            try:
+                if tag_layout_str:
+                    self._cached_tag_layout = json.loads(tag_layout_str)
+                else:
+                    self._cached_tag_layout = None
+            except json.JSONDecodeError:
+                self._cached_tag_layout = None
+        config_store.remote_config.tag_layout = self._cached_tag_layout

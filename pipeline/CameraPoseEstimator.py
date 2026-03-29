@@ -20,7 +20,31 @@ class CameraPoseEstimator:
 
 class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
     def __init__(self) -> None:
-        pass
+        self._tag_pose_cache = {}
+        self._cached_tag_layout = None
+
+    def _get_tag_pose_map(self, tag_layout) -> dict:
+        """Return a dict of tag_id -> Pose3d, rebuilding only when layout changes."""
+        if tag_layout is self._cached_tag_layout:
+            return self._tag_pose_cache
+        self._cached_tag_layout = tag_layout
+        self._tag_pose_cache = {}
+        if tag_layout is None:
+            return self._tag_pose_cache
+        for tag_data in tag_layout.get("tags", []):
+            self._tag_pose_cache[tag_data["ID"]] = Pose3d(
+                Translation3d(
+                    tag_data["pose"]["translation"]["x"],
+                    tag_data["pose"]["translation"]["y"],
+                    tag_data["pose"]["translation"]["z"]
+                ),
+                Rotation3d(Quaternion(
+                    tag_data["pose"]["rotation"]["quaternion"]["W"],
+                    tag_data["pose"]["rotation"]["quaternion"]["X"],
+                    tag_data["pose"]["rotation"]["quaternion"]["Y"],
+                    tag_data["pose"]["rotation"]["quaternion"]["Z"]
+                )))
+        return self._tag_pose_cache
 
     def solve_camera_pose(self, image_observations: List[FiducialImageObservation], config_store: ConfigStore) -> Union[CameraPoseObservation, None]:
         # Exit if no tag layout available
@@ -31,6 +55,9 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
         if len(image_observations) == 0:
             return None
 
+        # Build tag_id -> Pose3d lookup (cached across frames)
+        tag_pose_map = self._get_tag_pose_map(config_store.remote_config.tag_layout)
+
         # Create set of object and image points
         fid_size = config_store.remote_config.fiducial_size_m
         object_points = []
@@ -38,21 +65,7 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
         tag_ids = []
         tag_poses = []
         for observation in image_observations:
-            tag_pose = None
-            for tag_data in config_store.remote_config.tag_layout["tags"]:
-                if tag_data["ID"] == observation.tag_id:
-                    tag_pose = Pose3d(
-                        Translation3d(
-                            tag_data["pose"]["translation"]["x"],
-                            tag_data["pose"]["translation"]["y"],
-                            tag_data["pose"]["translation"]["z"]
-                        ),
-                        Rotation3d(Quaternion(
-                            tag_data["pose"]["rotation"]["quaternion"]["W"],
-                            tag_data["pose"]["rotation"]["quaternion"]["X"],
-                            tag_data["pose"]["rotation"]["quaternion"]["Y"],
-                            tag_data["pose"]["rotation"]["quaternion"]["Z"]
-                        )))
+            tag_pose = tag_pose_map.get(observation.tag_id)
             if tag_pose is not None:
                 # Add object points by transforming from the tag center
                 corner_0 = tag_pose + Transform3d(Translation3d(0, fid_size / 2.0, -fid_size / 2.0), Rotation3d())

@@ -43,6 +43,8 @@ if __name__ == "__main__":
     frame_count = 0
     last_print = 0
     was_calibrating = False
+    # Pre-build per-camera configs (rebuilt when local config changes)
+    cam_configs = [config.for_camera(i) for i in range(num_cameras)]
     while True:
         remote_config_source.update(config)
         timestamp = time.time()
@@ -96,7 +98,9 @@ if __name__ == "__main__":
             t_det = time.perf_counter()
 
             for cam_idx in range(num_cameras):
-                cam_config = config.for_camera(cam_idx)
+                cam_config = cam_configs[cam_idx]
+                # Update remote config reference (changes every frame from NT)
+                cam_config.remote_config = config.remote_config
                 if not cam_config.local_config.has_calibration:
                     continue
 

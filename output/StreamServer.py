@@ -20,8 +20,8 @@ class StreamServer:
 
 class MjpegServer(StreamServer):
     _frame = None
-    _has_frame: bool = False
     _lock: threading.Lock = threading.Lock()
+    _new_frame_event: threading.Event = threading.Event()
 
     def _make_handler(self_mjpeg):  # type: ignore
         class MJPEGHandler(BaseHTTPRequestHandler):
@@ -41,22 +41,18 @@ class MjpegServer(StreamServer):
                     encode_params = [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
                     try:
                         while True:
+                            self_mjpeg._new_frame_event.wait()
                             with self_mjpeg._lock:
                                 frame = self_mjpeg._frame
                             if frame is None:
-                                import time
-                                time.sleep(0.01)
                                 continue
                             ret, jpeg = cv2.imencode('.jpg', frame, encode_params)
                             if not ret:
                                 continue
                             data = jpeg.tobytes()
-                            self.wfile.write(b'--frame\r\n')
-                            self.wfile.write(b'Content-Type: image/jpeg\r\n')
-                            self.wfile.write(f'Content-Length: {len(data)}\r\n'.encode())
-                            self.wfile.write(b'\r\n')
-                            self.wfile.write(data)
-                            self.wfile.write(b'\r\n')
+                            header = (f'--frame\r\nContent-Type: image/jpeg\r\n'
+                                      f'Content-Length: {len(data)}\r\n\r\n').encode()
+                            self.wfile.write(header + data + b'\r\n')
                     except BrokenPipeError:
                         return
                 else:
@@ -78,3 +74,5 @@ class MjpegServer(StreamServer):
     def set_frame(self, frame: cv2.Mat) -> None:
         with self._lock:
             self._frame = frame.copy()
+        self._new_frame_event.set()
+        self._new_frame_event.clear()

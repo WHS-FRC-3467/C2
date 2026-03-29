@@ -97,6 +97,7 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
 
     def __init__(self, camera_index: int = -1) -> None:
         self._camera_index = camera_index
+        self._builder = flatbuffers.Builder(256)
 
     def send(self, config_store: ConfigStore, timestamp: float, observation: Union[CameraPoseObservation, None], fps: Union[int, None] = None) -> None:
         if not self._init_complete:
@@ -115,7 +116,8 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
             self._fps_pub.set(fps)
 
         timestamp_us = math.floor(timestamp * 1000000)
-        builder = flatbuffers.Builder(256)
+        builder = self._builder
+        builder.Reset()
 
         # Build camera observation if present
         cam_obs_offset = None
