@@ -30,7 +30,7 @@ class SquareTargetPoseEstimator(PoseEstimator):
         try:
             _, rvecs, tvecs, errors = cv2.solvePnPGeneric(object_points, image_observation.corners, config_store.local_config.camera_matrix,
                                                           config_store.local_config.distortion_coefficients, flags=cv2.SOLVEPNP_IPPE_SQUARE)
-        except:
+        except Exception:
             return None
         return FiducialPoseObservation(
             image_observation.tag_id,

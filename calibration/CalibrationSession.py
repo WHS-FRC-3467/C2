@@ -9,11 +9,10 @@ from config.ConfigSource import FileConfigSource
 
 
 class CalibrationSession:
-    _all_charuco_corners: List[numpy.ndarray] = []
-    _all_charuco_ids: List[numpy.ndarray] = []
-    _imsize = None
-
     def __init__(self) -> None:
+        self._all_charuco_corners: List[numpy.ndarray] = []
+        self._all_charuco_ids: List[numpy.ndarray] = []
+        self._imsize = None
         self._aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_1000)
         self._aruco_params = cv2.aruco.DetectorParameters()
         self._charuco_board = cv2.aruco.CharucoBoard((12, 9), 0.030, 0.023, self._aruco_dict)
@@ -22,7 +21,7 @@ class CalibrationSession:
 
     def process_frame(self, image: cv2.Mat, save: bool) -> None:
         # Get image size
-        if self._imsize == None:
+        if self._imsize is None:
             self._imsize = (image.shape[0], image.shape[1])
 
         # Detect tags

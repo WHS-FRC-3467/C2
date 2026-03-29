@@ -45,7 +45,7 @@ class FileConfigSource(ConfigSource):
             distortion_coefficients = calibration_store.getNode("distortion_coefficients").mat()
             calibration_store.release()
 
-            if type(camera_matrix) == numpy.ndarray and type(distortion_coefficients) == numpy.ndarray:
+            if isinstance(camera_matrix, numpy.ndarray) and isinstance(distortion_coefficients, numpy.ndarray):
                 config_store.local_config.camera_matrices.append(camera_matrix)
                 config_store.local_config.distortion_coefficients_list.append(distortion_coefficients)
                 config_store.local_config.has_calibrations.append(True)
@@ -66,7 +66,7 @@ class NTConfigSource(ConfigSource):
     _camera_exposure_sub: ntcore.IntegerSubscriber
     _camera_gain_sub: ntcore.IntegerSubscriber
     _fiducial_size_m_sub: ntcore.DoubleSubscriber
-    _tag_layout_sub: ntcore.DoubleSubscriber
+    _tag_layout_sub: ntcore.StringSubscriber
 
     def update(self, config_store: ConfigStore) -> None:
         # Initialize subscribers on first call
@@ -97,6 +97,5 @@ class NTConfigSource(ConfigSource):
         config_store.remote_config.fiducial_size_m = self._fiducial_size_m_sub.get()
         try:
             config_store.remote_config.tag_layout = json.loads(self._tag_layout_sub.get())
-        except:
+        except (json.JSONDecodeError, TypeError):
             config_store.remote_config.tag_layout = None
-            pass

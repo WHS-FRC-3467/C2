@@ -24,7 +24,7 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
 
     def solve_camera_pose(self, image_observations: List[FiducialImageObservation], config_store: ConfigStore) -> Union[CameraPoseObservation, None]:
         # Exit if no tag layout available
-        if config_store.remote_config.tag_layout == None:
+        if config_store.remote_config.tag_layout is None:
             return None
 
         # Exit if no observations available
@@ -53,7 +53,7 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
                             tag_data["pose"]["rotation"]["quaternion"]["Y"],
                             tag_data["pose"]["rotation"]["quaternion"]["Z"]
                         )))
-            if tag_pose != None:
+            if tag_pose is not None:
                 # Add object points by transforming from the tag center
                 corner_0 = tag_pose + Transform3d(Translation3d(0, fid_size / 2.0, -fid_size / 2.0), Rotation3d())
                 corner_1 = tag_pose + Transform3d(Translation3d(0, -fid_size / 2.0, -fid_size / 2.0), Rotation3d())
@@ -87,7 +87,7 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
             try:
                 _, rvecs, tvecs, errors = cv2.solvePnPGeneric(object_points, numpy.array(image_points),
                                                               config_store.local_config.camera_matrix, config_store.local_config.distortion_coefficients, flags=cv2.SOLVEPNP_IPPE_SQUARE)
-            except:
+            except Exception:
                 return None
 
             # Calculate WPILib camera poses
@@ -110,7 +110,7 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
             try:
                 _, rvecs, tvecs, errors = cv2.solvePnPGeneric(numpy.array(object_points), numpy.array(image_points),
                                                               config_store.local_config.camera_matrix, config_store.local_config.distortion_coefficients, flags=cv2.SOLVEPNP_SQPNP)
-            except:
+            except Exception:
                 return None
 
             # Calculate WPILib camera pose

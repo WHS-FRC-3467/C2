@@ -22,9 +22,9 @@ class Capture:
     @classmethod
     def _config_changed(cls, config_a: ConfigStore, config_b: ConfigStore) -> bool:
         """Check if capture pipeline needs full restart (camera device or resolution changed)."""
-        if config_a == None and config_b == None:
+        if config_a is None and config_b is None:
             return False
-        if config_a == None or config_b == None:
+        if config_a is None or config_b is None:
             return True
 
         remote_a = config_a.remote_config
@@ -34,7 +34,7 @@ class Capture:
 
     @classmethod
     def _exposure_changed(cls, config_a: ConfigStore, config_b: ConfigStore) -> bool:
-        if config_a == None or config_b == None:
+        if config_a is None or config_b is None:
             return True
         return config_a.remote_config.camera_exposure != config_b.remote_config.camera_exposure or config_a.remote_config.camera_gain != config_b.remote_config.camera_gain
 
@@ -49,12 +49,12 @@ class DefaultCapture(Capture):
     _last_config: ConfigStore
 
     def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
-        if self._video != None and self._config_changed(self._last_config, config_store):
+        if self._video is not None and self._config_changed(self._last_config, config_store):
             print("Restarting capture session")
             self._video.release()
             self._video = None
 
-        if self._video == None:
+        if self._video is None:
             self._video = cv2.VideoCapture(config_store.remote_config.camera_id)
             self._video.set(cv2.CAP_PROP_FRAME_WIDTH, config_store.remote_config.camera_resolution_width)
             self._video.set(cv2.CAP_PROP_FRAME_HEIGHT, config_store.remote_config.camera_resolution_height)
@@ -77,13 +77,13 @@ class GStreamerCapture(Capture):
     _last_config: ConfigStore
 
     def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
-        if self._video != None and self._config_changed(self._last_config, config_store):
+        if self._video is not None and self._config_changed(self._last_config, config_store):
             print("Config changed, stopping capture session")
             self._video.release()
             self._video = None
             time.sleep(2)
 
-        if self._video == None:
+        if self._video is None:
             if config_store.remote_config.camera_id == "":
                 print("No camera ID, waiting to start capture session")
             else:
@@ -95,7 +95,7 @@ class GStreamerCapture(Capture):
         self._last_config = ConfigStore(dataclasses.replace(config_store.local_config),
                                         dataclasses.replace(config_store.remote_config))
 
-        if self._video != None:
+        if self._video is not None:
             retval, image = self._video.read()
             if not retval:
                 print("Capture session failed, restarting")

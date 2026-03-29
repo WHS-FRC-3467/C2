@@ -102,7 +102,8 @@ if __name__ == "__main__":
 
                 image_observations = all_detections[cam_idx]
                 display_sub = display_image[:, cam_idx * sub_width:(cam_idx + 1) * sub_width]
-                [overlay_image_observation(display_sub, x) for x in image_observations]
+                for x in image_observations:
+                    overlay_image_observation(display_sub, x)
 
                 camera_pose_observation = camera_pose_estimator.solve_camera_pose(
                     image_observations, cam_config)

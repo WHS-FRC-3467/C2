@@ -4,10 +4,10 @@ from config.config import ConfigStore
 
 
 class CalibrationCommandSource:
-    def get_calibrating(self) -> bool:
+    def get_calibrating(self, config_store: ConfigStore) -> bool:
         return False
 
-    def get_capture_flag(self) -> bool:
+    def get_capture_flag(self, config_store: ConfigStore) -> bool:
         return False
 
 
