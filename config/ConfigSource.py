@@ -14,14 +14,9 @@ class ConfigSource:
 
 class FileConfigSource(ConfigSource):
     CONFIG_FILENAME = "config.json"
-    CALIBRATION_FILENAME = "calibration.json"
-
-    def __init__(self) -> None:
-        pass
-
-    @staticmethod
+@staticmethod
     def calibration_filename(camera_index: int) -> str:
-        return f"calibration_{camera_index}.json"
+        return f"calibration_{camera_index}.yml"
 
     def update(self, config_store: ConfigStore) -> None:
         # Get config

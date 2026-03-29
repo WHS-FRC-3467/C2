@@ -12,7 +12,7 @@ from config.config import ConfigStore, LocalConfig, RemoteConfig
 from config.ConfigSource import ConfigSource, FileConfigSource, NTConfigSource
 from output.OutputPublisher import NTFlatbufferOutputPublisher, OutputPublisher
 from output.overlay_util import *
-from output.StreamServer import MjpegServer
+from output.StreamServer import MjpegServer, RawCameraMjpegServer
 from pipeline.CameraPoseEstimator import MultiTargetCameraPoseEstimator
 from pipeline.Capture import MultiCameraCapture
 from pipeline.ArucoNanoDetector import ArucoNanoFiducialDetector
@@ -33,12 +33,18 @@ if __name__ == "__main__":
     camera_pose_estimator = MultiTargetCameraPoseEstimator()
     output_publishers = [NTFlatbufferOutputPublisher(i) for i in range(num_cameras)]
     stream_server = MjpegServer()
+    raw_camera_servers = [RawCameraMjpegServer(i) for i in range(num_cameras)]
     calibration_session = CalibrationSession()
     detection_pool = ThreadPoolExecutor(max_workers=num_cameras)
 
     ntcore.NetworkTableInstance.getDefault().setServer(config.local_config.server_ip)
     ntcore.NetworkTableInstance.getDefault().startClient4(config.local_config.device_id)
     stream_server.start(config)
+    base_port = config.local_config.stream_port
+    for i, raw_server in enumerate(raw_camera_servers):
+        port = base_port + 1 + i
+        raw_server.start(port)
+        print(f"Raw camera {i} stream at port {port}")
 
     frame_count = 0
     last_print = 0
@@ -99,6 +105,8 @@ if __name__ == "__main__":
                 cam_config = config.for_camera(cam_idx)
                 if not cam_config.local_config.has_calibration:
                     continue
+
+                raw_camera_servers[cam_idx].set_frame(sub_frames[cam_idx])
 
                 image_observations = all_detections[cam_idx]
                 display_sub = display_image[:, cam_idx * sub_width:(cam_idx + 1) * sub_width]
