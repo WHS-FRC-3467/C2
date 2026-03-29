@@ -68,7 +68,7 @@ class NTConfigSource(ConfigSource):
     _fiducial_size_m_sub: ntcore.DoubleSubscriber
     _tag_layout_sub: ntcore.StringSubscriber
     _cached_tag_layout_str: str = ""
-    _cached_tag_layout: any = None
+    _cached_tag_layout: dict = None
 
     def update(self, config_store: ConfigStore) -> None:
         # Initialize subscribers on first call

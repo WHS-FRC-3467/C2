@@ -20,8 +20,7 @@ class StreamServer:
 
 class MjpegServer(StreamServer):
     _frame = None
-    _lock: threading.Lock = threading.Lock()
-    _new_frame_event: threading.Event = threading.Event()
+    _condition: threading.Condition = threading.Condition()
 
     def _make_handler(self_mjpeg):  # type: ignore
         class MJPEGHandler(BaseHTTPRequestHandler):
@@ -41,8 +40,8 @@ class MjpegServer(StreamServer):
                     encode_params = [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
                     try:
                         while True:
-                            self_mjpeg._new_frame_event.wait()
-                            with self_mjpeg._lock:
+                            with self_mjpeg._condition:
+                                self_mjpeg._condition.wait()
                                 frame = self_mjpeg._frame
                             if frame is None:
                                 continue
@@ -72,7 +71,6 @@ class MjpegServer(StreamServer):
         threading.Thread(target=self._run, daemon=True, args=(config_store.local_config.stream_port,)).start()
 
     def set_frame(self, frame: cv2.Mat) -> None:
-        with self._lock:
+        with self._condition:
             self._frame = frame.copy()
-        self._new_frame_event.set()
-        self._new_frame_event.clear()
+            self._condition.notify_all()
