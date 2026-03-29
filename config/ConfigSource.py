@@ -96,6 +96,10 @@ class NTConfigSource(ConfigSource):
         config_store.remote_config.camera_gain = self._camera_gain_sub.get()
         config_store.remote_config.fiducial_size_m = self._fiducial_size_m_sub.get()
         try:
-            config_store.remote_config.tag_layout = json.loads(self._tag_layout_sub.get())
-        except (json.JSONDecodeError, TypeError):
+            tag_layout_str = self._tag_layout_sub.get()
+            if tag_layout_str:
+                config_store.remote_config.tag_layout = json.loads(tag_layout_str)
+            else:
+                config_store.remote_config.tag_layout = None
+        except json.JSONDecodeError:
             config_store.remote_config.tag_layout = None
