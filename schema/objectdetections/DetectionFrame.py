@@ -25,15 +25,8 @@ class DetectionFrame(object):
         self._tab = flatbuffers.table.Table(buf, pos)
 
     # DetectionFrame
-    def TimestampUs(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
-        if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Uint64Flags, o + self._tab.Pos)
-        return 0
-
-    # DetectionFrame
     def Detections(self, j):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
@@ -46,30 +39,24 @@ class DetectionFrame(object):
 
     # DetectionFrame
     def DetectionsLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.VectorLen(o)
         return 0
 
     # DetectionFrame
     def DetectionsIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
 def DetectionFrameStart(builder):
-    builder.StartObject(2)
+    builder.StartObject(1)
 
 def Start(builder):
     DetectionFrameStart(builder)
 
-def DetectionFrameAddTimestampUs(builder, timestampUs):
-    builder.PrependUint64Slot(0, timestampUs, 0)
-
-def AddTimestampUs(builder, timestampUs):
-    DetectionFrameAddTimestampUs(builder, timestampUs)
-
 def DetectionFrameAddDetections(builder, detections):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(detections), 0)
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(detections), 0)
 
 def AddDetections(builder, detections):
     DetectionFrameAddDetections(builder, detections)
@@ -79,12 +66,6 @@ def DetectionFrameStartDetectionsVector(builder, numElems):
 
 def StartDetectionsVector(builder, numElems):
     return DetectionFrameStartDetectionsVector(builder, numElems)
-
-def DetectionFrameCreateDetectionsVector(builder, data):
-    return builder.CreateVectorOfTables(data)
-
-def CreateDetectionsVector(builder, data):
-    DetectionFrameCreateDetectionsVector(builder, data)
 
 def DetectionFrameEnd(builder):
     return builder.EndObject()

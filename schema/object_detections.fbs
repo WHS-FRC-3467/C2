@@ -15,7 +15,6 @@ table Detection {
 }
 
 table DetectionFrame {
-  timestamp_us: uint64;
   detections: [Detection];
 }
 

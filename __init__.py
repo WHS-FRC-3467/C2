@@ -21,11 +21,10 @@ from pipeline.FiducialDetector import ArucoFiducialDetector
 from pipeline.TensorRTYoloDetector import TensorRTDetectorError, TensorRTYoloDetector
 from pipeline.VideoDeviceCapture import VideoDeviceCapture
 
-VIDEO1_DEVICE = "/dev/video1"
-VIDEO1_CALIBRATION = "calibration_1.json"
+OBJDETECT_DEVICE = "/dev/video1"
+OBJDETECT_CALIBRATION = "calibration_objdetect.json"
 YOLO_ENGINE = "./model.engine"
 YOLO_ONNX = "./model.onnx"
-
 
 def _load_camera_matrix(filename: str) -> numpy.ndarray:
     calibration_store = cv2.FileStorage(filename, cv2.FILE_STORAGE_READ)
@@ -55,14 +54,14 @@ if __name__ == "__main__":
     object_detection_stream = RawCameraMjpegServer(-1)
     calibration_session = CalibrationSession()
     detection_pool = ThreadPoolExecutor(max_workers=num_cameras)
-    video1_capture = VideoDeviceCapture(VIDEO1_DEVICE)
-    video1_camera_matrix = _load_camera_matrix(VIDEO1_CALIBRATION)
+    video1_capture = VideoDeviceCapture(OBJDETECT_DEVICE)
+    video1_camera_matrix = _load_camera_matrix(OBJDETECT_CALIBRATION)
     video1_detector = None
     video1_error = None
     if video1_camera_matrix.size != 0:
         video1_detector = TensorRTYoloDetector(YOLO_ENGINE, YOLO_ONNX, video1_camera_matrix)
     else:
-        video1_error = f"Missing camera matrix in {VIDEO1_CALIBRATION}"
+        video1_error = f"Missing camera matrix in {OBJDETECT_CALIBRATION}"
         print(video1_error)
 
     ntcore.NetworkTableInstance.getDefault().setServer(config.local_config.server_ip)
@@ -104,8 +103,8 @@ if __name__ == "__main__":
                 object_detection_publisher.send(timestamp, [])
         else:
             object_detection_publisher.send(timestamp, [])
-            if not video1_success and video1_error != f"Unable to read {VIDEO1_DEVICE}":
-                video1_error = f"Unable to read {VIDEO1_DEVICE}"
+            if not video1_success and video1_error != f"Unable to read {OBJDETECT_DEVICE}":
+                video1_error = f"Unable to read {OBJDETECT_DEVICE}"
                 print(video1_error)
 
         t_cap0 = time.perf_counter()

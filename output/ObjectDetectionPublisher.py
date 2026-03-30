@@ -28,10 +28,9 @@ from objectdetections.Detection import (
 )
 from objectdetections.DetectionFrame import (
     DetectionFrameAddDetections,
-    DetectionFrameAddTimestampUs,
-    DetectionFrameCreateDetectionsVector,
     DetectionFrameEnd,
     DetectionFrameStart,
+    DetectionFrameStartDetectionsVector,
 )
 
 
@@ -51,10 +50,16 @@ def _build_detection(builder: flatbuffers.Builder, detection: ObjectDetectionObs
     return DetectionEnd(builder)
 
 
+def _build_detections_vector(builder: flatbuffers.Builder, detection_offsets: List[int]) -> int:
+    DetectionFrameStartDetectionsVector(builder, len(detection_offsets))
+    for detection_offset in reversed(detection_offsets):
+        builder.PrependUOffsetTRelative(detection_offset)
+    return builder.EndVector()
+
+
 class NTObjectDetectionPublisher:
     _init_complete: bool = False
     _frame_pub: ntcore.RawPublisher
-    _count_pub: ntcore.IntegerPublisher
 
     def __init__(self, device_id: str, table_name: str = "video1_yolo") -> None:
         self._device_id = device_id
@@ -69,19 +74,16 @@ class NTObjectDetectionPublisher:
                 "objectdetections_fb",
                 ntcore.PubSubOptions(periodic=0, sendAll=True, keepDuplicates=True),
             )
-            self._count_pub = nt_table.getIntegerTopic("count").publish()
             self._init_complete = True
 
         timestamp_us = math.floor(timestamp * 1000000)
         builder = flatbuffers.Builder(256)
         detection_offsets = [_build_detection(builder, detection) for detection in detections]
-        detections_vec = DetectionFrameCreateDetectionsVector(builder, detection_offsets)
+        detections_vec = _build_detections_vector(builder, detection_offsets)
 
         DetectionFrameStart(builder)
-        DetectionFrameAddTimestampUs(builder, timestamp_us)
         DetectionFrameAddDetections(builder, detections_vec)
         frame = DetectionFrameEnd(builder)
         builder.Finish(frame)
 
-        self._count_pub.set(len(detections), timestamp_us)
         self._frame_pub.set(bytes(builder.Output()), timestamp_us)
