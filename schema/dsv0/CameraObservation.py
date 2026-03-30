@@ -106,6 +106,16 @@ def CameraObservationStartTagIdsVector(builder, numElems):
 def StartTagIdsVector(builder, numElems):
     return CameraObservationStartTagIdsVector(builder, numElems)
 
+def CameraObservationCreateTagIdsVector(builder, data):
+    data = list(data)
+    builder.StartVector(4, len(data), 4)
+    for item in reversed(data):
+        builder.PrependInt32(item)
+    return builder.EndVector()
+
+def CreateTagIdsVector(builder, data):
+    CameraObservationCreateTagIdsVector(builder, data)
+
 def CameraObservationEnd(builder):
     return builder.EndObject()
 

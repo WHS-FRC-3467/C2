@@ -25,18 +25,10 @@ class Frame(object):
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
-    # Microsecond timestamp for the frame capture
-    # Frame
-    def TimestampUs(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
-        if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Int64Flags, o + self._tab.Pos)
-        return 0
-
     # Per-camera results
     # Frame
     def Cameras(self, j):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
@@ -49,30 +41,24 @@ class Frame(object):
 
     # Frame
     def CamerasLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.VectorLen(o)
         return 0
 
     # Frame
     def CamerasIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
 def FrameStart(builder):
-    builder.StartObject(2)
+    builder.StartObject(1)
 
 def Start(builder):
     FrameStart(builder)
 
-def FrameAddTimestampUs(builder, timestampUs):
-    builder.PrependInt64Slot(0, timestampUs, 0)
-
-def AddTimestampUs(builder, timestampUs):
-    FrameAddTimestampUs(builder, timestampUs)
-
 def FrameAddCameras(builder, cameras):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(cameras), 0)
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(cameras), 0)
 
 def AddCameras(builder, cameras):
     FrameAddCameras(builder, cameras)
@@ -82,6 +68,12 @@ def FrameStartCamerasVector(builder, numElems):
 
 def StartCamerasVector(builder, numElems):
     return FrameStartCamerasVector(builder, numElems)
+
+def FrameCreateCamerasVector(builder, data):
+    return builder.CreateVectorOfTables(data)
+
+def CreateCamerasVector(builder, data):
+    FrameCreateCamerasVector(builder, data)
 
 def FrameEnd(builder):
     return builder.EndObject()

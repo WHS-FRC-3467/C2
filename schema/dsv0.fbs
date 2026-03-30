@@ -33,8 +33,6 @@ table CameraObservation {
 }
 
 table CameraOutput {
-  /// Microsecond timestamp (matches NT timestamp convention)
-  timestamp_us: int64;
   /// Camera index within the multi-camera module
   camera_index: int32;
   /// Field-relative camera pose observation (null if no tags seen)
@@ -45,8 +43,6 @@ table CameraOutput {
 
 /// Top-level message containing results from all cameras in a single frame
 table Frame {
-  /// Microsecond timestamp for the frame capture
-  timestamp_us: int64;
   /// Per-camera results
   cameras: [CameraOutput];
 }

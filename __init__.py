@@ -10,6 +10,7 @@ from calibration.CalibrationCommandSource import (CalibrationCommandSource,
 from calibration.CalibrationSession import CalibrationSession
 from config.config import ConfigStore, LocalConfig, RemoteConfig
 from config.ConfigSource import ConfigSource, FileConfigSource, NTConfigSource
+from output.ObjectDetectionPublisher import NTObjectDetectionPublisher
 from output.OutputPublisher import NTFlatbufferOutputPublisher, OutputPublisher
 from output.overlay_util import *
 from output.StreamServer import MjpegServer, RawCameraMjpegServer
@@ -17,6 +18,22 @@ from pipeline.CameraPoseEstimator import MultiTargetCameraPoseEstimator
 from pipeline.Capture import MultiCameraCapture
 from pipeline.ArucoNanoDetector import ArucoNanoFiducialDetector
 from pipeline.FiducialDetector import ArucoFiducialDetector
+from pipeline.TensorRTYoloDetector import TensorRTDetectorError, TensorRTYoloDetector
+from pipeline.VideoDeviceCapture import VideoDeviceCapture
+
+VIDEO1_DEVICE = "/dev/video1"
+VIDEO1_CALIBRATION = "calibration_1.json"
+YOLO_ENGINE = "./model.engine"
+YOLO_ONNX = "./model.onnx"
+
+
+def _load_camera_matrix(filename: str) -> numpy.ndarray:
+    calibration_store = cv2.FileStorage(filename, cv2.FILE_STORAGE_READ)
+    camera_matrix = calibration_store.getNode("camera_matrix").mat()
+    calibration_store.release()
+    if isinstance(camera_matrix, numpy.ndarray):
+        return camera_matrix
+    return numpy.array([])
 
 if __name__ == "__main__":
     config = ConfigStore(LocalConfig(), RemoteConfig())
@@ -32,10 +49,21 @@ if __name__ == "__main__":
     fiducial_detectors = [ArucoNanoFiducialDetector(cv2.aruco.DICT_APRILTAG_36h11) for _ in range(num_cameras)]
     camera_pose_estimator = MultiTargetCameraPoseEstimator()
     output_publishers = [NTFlatbufferOutputPublisher(i) for i in range(num_cameras)]
+    object_detection_publisher = NTObjectDetectionPublisher(config.local_config.device_id)
     stream_server = MjpegServer()
     raw_camera_servers = [RawCameraMjpegServer(i) for i in range(num_cameras)]
+    object_detection_stream = RawCameraMjpegServer(-1)
     calibration_session = CalibrationSession()
     detection_pool = ThreadPoolExecutor(max_workers=num_cameras)
+    video1_capture = VideoDeviceCapture(VIDEO1_DEVICE)
+    video1_camera_matrix = _load_camera_matrix(VIDEO1_CALIBRATION)
+    video1_detector = None
+    video1_error = None
+    if video1_camera_matrix.size != 0:
+        video1_detector = TensorRTYoloDetector(YOLO_ENGINE, YOLO_ONNX, video1_camera_matrix)
+    else:
+        video1_error = f"Missing camera matrix in {VIDEO1_CALIBRATION}"
+        print(video1_error)
 
     ntcore.NetworkTableInstance.getDefault().setServer(config.local_config.server_ip)
     ntcore.NetworkTableInstance.getDefault().startClient4(config.local_config.device_id)
@@ -45,6 +73,9 @@ if __name__ == "__main__":
         port = base_port + 1 + i
         raw_server.start(port)
         print(f"Raw camera {i} stream at port {port}")
+    object_detection_port = base_port + 1 + num_cameras
+    object_detection_stream.start(object_detection_port)
+    print(f"video1 object detection stream at port {object_detection_port}")
 
     frame_count = 0
     last_print = 0
@@ -52,6 +83,31 @@ if __name__ == "__main__":
     while True:
         remote_config_source.update(config)
         timestamp = time.time()
+        video1_success, video1_frame = video1_capture.read()
+        if video1_success and video1_detector is not None:
+            try:
+                video1_detections = video1_detector.detect(video1_frame)
+                object_detection_publisher.send(timestamp, video1_detections)
+                if object_detection_stream.has_clients:
+                    if len(video1_frame.shape) == 2:
+                        object_detection_frame = cv2.cvtColor(video1_frame, cv2.COLOR_GRAY2BGR)
+                    else:
+                        object_detection_frame = video1_frame.copy()
+                    for detection in video1_detections:
+                        overlay_object_detection(object_detection_frame, detection)
+                    object_detection_stream.set_frame(object_detection_frame)
+                video1_error = None
+            except TensorRTDetectorError as exc:
+                if video1_error != str(exc):
+                    video1_error = str(exc)
+                    print(f"video1 YOLO disabled: {video1_error}")
+                object_detection_publisher.send(timestamp, [])
+        else:
+            object_detection_publisher.send(timestamp, [])
+            if not video1_success and video1_error != f"Unable to read {VIDEO1_DEVICE}":
+                video1_error = f"Unable to read {VIDEO1_DEVICE}"
+                print(video1_error)
+
         t_cap0 = time.perf_counter()
         success, image = capture.get_frame(config)
         t_cap1 = time.perf_counter()

@@ -1,0 +1,22 @@
+namespace objectdetections;
+
+table Detection {
+  class_id: int32;
+  confidence: float64;
+  x0: int32;
+  y0: int32;
+  x1: int32;
+  y1: int32;
+  centroid_x: float64;
+  centroid_y: float64;
+  pitch_deg: float64;
+  yaw_deg: float64;
+  area_px: int32;
+}
+
+table DetectionFrame {
+  timestamp_us: uint64;
+  detections: [Detection];
+}
+
+root_type DetectionFrame;
