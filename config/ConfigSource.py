@@ -1,4 +1,5 @@
 import json
+import os
 
 import cv2
 import ntcore
@@ -14,9 +15,13 @@ class ConfigSource:
 
 class FileConfigSource(ConfigSource):
     CONFIG_FILENAME = "config.json"
-@staticmethod
+
+    @staticmethod
     def calibration_filename(camera_index: int) -> str:
-        return f"calibration_{camera_index}.yml"
+        yml_filename = f"calibration_{camera_index}.yml"
+        if os.path.exists(yml_filename):
+            return yml_filename
+        return f"calibration_{camera_index}.json"
 
     def update(self, config_store: ConfigStore) -> None:
         # Get config
@@ -26,6 +31,9 @@ class FileConfigSource(ConfigSource):
             config_store.local_config.server_ip = config_data["server_ip"]
             config_store.local_config.stream_port = config_data["stream_port"]
             config_store.local_config.num_cameras = config_data.get("num_cameras", 4)
+            config_store.local_config.enable_object_detection = bool(
+                config_data.get("enable_object_detection", False)
+            )
 
         # Load per-camera calibrations
         num_cameras = config_store.local_config.num_cameras
@@ -61,7 +69,7 @@ class NTConfigSource(ConfigSource):
     _camera_exposure_sub: ntcore.IntegerSubscriber
     _camera_gain_sub: ntcore.IntegerSubscriber
     _fiducial_size_m_sub: ntcore.DoubleSubscriber
-    _tag_layout_sub: ntcore.DoubleSubscriber
+    _tag_layout_sub: ntcore.StringSubscriber
 
     def update(self, config_store: ConfigStore) -> None:
         # Initialize subscribers on first call

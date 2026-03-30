@@ -12,6 +12,7 @@ class LocalConfig:
     server_ip: str = ""
     stream_port: int = 8000
     num_cameras: int = 4
+    enable_object_detection: bool = False
     has_calibration: bool = False
     camera_matrix: numpy.typing.NDArray[numpy.float64] = field(default_factory=lambda: numpy.array([]))
     distortion_coefficients: numpy.typing.NDArray[numpy.float64] = field(default_factory=lambda: numpy.array([]))

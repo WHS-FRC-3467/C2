@@ -184,3 +184,5 @@ src/main/deploy/trajectories/*.pathblob
 ~*.xlsx
 __pycache__/
 aruco_nano/build/
+
+.venv
