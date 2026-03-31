@@ -43,28 +43,54 @@ class DefaultCapture(Capture):
     """"Read from camera with default OpenCV config."""
 
     def __init__(self) -> None:
-        pass
-
-    _video = None
-    _last_config: ConfigStore
+        self._video = None
+        self._last_config = None
 
     def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
-        if self._video != None and self._config_changed(self._last_config, config_store):
-            print("Restarting capture session")
+        if self._video is not None and self._config_changed(self._last_config, config_store):
+            print("Config changed, stopping capture session")
             self._video.release()
             self._video = None
+            time.sleep(2)
 
-        if self._video == None:
-            self._video = cv2.VideoCapture(config_store.remote_config.camera_id)
-            self._video.set(cv2.CAP_PROP_FRAME_WIDTH, config_store.remote_config.camera_resolution_width)
-            self._video.set(cv2.CAP_PROP_FRAME_HEIGHT, config_store.remote_config.camera_resolution_height)
+        if self._video is None:
+            if config_store.remote_config.camera_id == "":
+                print("No camera ID, waiting to start capture session")
+            else:
+                print("Starting default capture session")
+                camera_id = config_store.remote_config.camera_id
+                try:
+                    camera_id = int(camera_id)
+                except ValueError:
+                    pass
+
+                self._video = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
+                if not self._video.isOpened():
+                    self._video.release()
+                    self._video = None
+                    return False, cv2.Mat(numpy.ndarray([]))
+                self._video.set(cv2.CAP_PROP_FRAME_WIDTH, config_store.remote_config.camera_resolution_width)
+                self._video.set(cv2.CAP_PROP_FRAME_HEIGHT, config_store.remote_config.camera_resolution_height)
+                self._video.set(cv2.CAP_PROP_EXPOSURE, config_store.remote_config.camera_exposure)
+                self._video.set(cv2.CAP_PROP_GAIN, config_store.remote_config.camera_gain)
+                print("Default capture session ready")
+        elif self._exposure_changed(self._last_config, config_store):
             self._video.set(cv2.CAP_PROP_EXPOSURE, config_store.remote_config.camera_exposure)
             self._video.set(cv2.CAP_PROP_GAIN, config_store.remote_config.camera_gain)
 
-        self._last_config = config_store
+        self._last_config = ConfigStore(dataclasses.replace(config_store.local_config),
+                                        dataclasses.replace(config_store.remote_config))
 
-        retval, image = self._video.read()
-        return retval, image
+        if self._video is not None:
+            retval, image = self._video.read()
+            if not retval:
+                print("Capture session failed, restarting")
+                self._video.release()
+                self._video = None
+                return False, cv2.Mat(numpy.ndarray([]))
+            return retval, image
+        else:
+            return False, cv2.Mat(numpy.ndarray([]))
 
 
 class GStreamerCapture(Capture):
