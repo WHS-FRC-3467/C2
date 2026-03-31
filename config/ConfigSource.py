@@ -14,7 +14,7 @@ class ConfigSource:
 
 class FileConfigSource(ConfigSource):
     CONFIG_FILENAME = "config.json"
-@staticmethod
+    @staticmethod
     def calibration_filename(camera_index: int) -> str:
         return f"calibration_{camera_index}.yml"
 
