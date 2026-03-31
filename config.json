@@ -1,6 +1,6 @@
 {
   "device_id": "dsv0",
-  "server_ip": "localhost",
+  "server_ip": "10.34.67.2",
   "stream_port": 8000,
   "num_cameras": 4,
   "enable_object_detection": false
