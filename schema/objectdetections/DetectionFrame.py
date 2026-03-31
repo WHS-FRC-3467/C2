@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class DetectionFrame(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -20,6 +22,7 @@ class DetectionFrame(object):
     def GetRootAsDetectionFrame(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
+
     # DetectionFrame
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
@@ -32,6 +35,7 @@ class DetectionFrame(object):
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
             from objectdetections.Detection import Detection
+
             obj = Detection()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -49,26 +53,36 @@ class DetectionFrame(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
+
 def DetectionFrameStart(builder):
     builder.StartObject(1)
+
 
 def Start(builder):
     DetectionFrameStart(builder)
 
+
 def DetectionFrameAddDetections(builder, detections):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(detections), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        0, flatbuffers.number_types.UOffsetTFlags.py_type(detections), 0
+    )
+
 
 def AddDetections(builder, detections):
     DetectionFrameAddDetections(builder, detections)
 
+
 def DetectionFrameStartDetectionsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
+
 
 def StartDetectionsVector(builder, numElems):
     return DetectionFrameStartDetectionsVector(builder, numElems)
 
+
 def DetectionFrameEnd(builder):
     return builder.EndObject()
+
 
 def End(builder):
     return DetectionFrameEnd(builder)

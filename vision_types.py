@@ -1,24 +1,36 @@
 from dataclasses import dataclass
-from typing import List, Union
 
-import numpy
-import numpy.typing
-from wpimath.geometry import *
+from wpimath.geometry import Pose3d  # type: ignore[import-not-found]
+
+from type_defs import FloatArray
 
 
 @dataclass(frozen=True)
 class FiducialImageObservation:
     tag_id: int
-    corners: numpy.typing.NDArray[numpy.float64]
+    corners: FloatArray
+
+
+@dataclass(frozen=True)
+class FiducialPoseObservation:
+    tag_id: int
+    pose_0: Pose3d
+    error_0: float
+    tvec_0: FloatArray
+    rvec_0: FloatArray
+    pose_1: Pose3d | None
+    error_1: float | None
+    tvec_1: FloatArray | None
+    rvec_1: FloatArray | None
 
 
 @dataclass(frozen=True)
 class CameraPoseObservation:
-    tag_ids: List[int]
+    tag_ids: list[int]
     pose_0: Pose3d
     error_0: float
-    pose_1: Union[Pose3d, None]
-    error_1: Union[float, None]
+    pose_1: Pose3d | None
+    error_1: float | None
 
 
 @dataclass(frozen=True)

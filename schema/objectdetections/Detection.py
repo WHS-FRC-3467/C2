@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class Detection(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -20,6 +22,7 @@ class Detection(object):
     def GetRootAsDetection(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
+
     # Detection
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
@@ -35,7 +38,9 @@ class Detection(object):
     def Confidence(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Float64Flags, o + self._tab.Pos)
+            return self._tab.Get(
+                flatbuffers.number_types.Float64Flags, o + self._tab.Pos
+            )
         return 0.0
 
     # Detection
@@ -70,28 +75,36 @@ class Detection(object):
     def CentroidX(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Float64Flags, o + self._tab.Pos)
+            return self._tab.Get(
+                flatbuffers.number_types.Float64Flags, o + self._tab.Pos
+            )
         return 0.0
 
     # Detection
     def CentroidY(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(18))
         if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Float64Flags, o + self._tab.Pos)
+            return self._tab.Get(
+                flatbuffers.number_types.Float64Flags, o + self._tab.Pos
+            )
         return 0.0
 
     # Detection
     def PitchDeg(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(20))
         if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Float64Flags, o + self._tab.Pos)
+            return self._tab.Get(
+                flatbuffers.number_types.Float64Flags, o + self._tab.Pos
+            )
         return 0.0
 
     # Detection
     def YawDeg(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(22))
         if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Float64Flags, o + self._tab.Pos)
+            return self._tab.Get(
+                flatbuffers.number_types.Float64Flags, o + self._tab.Pos
+            )
         return 0.0
 
     # Detection
@@ -101,80 +114,106 @@ class Detection(object):
             return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
         return 0
 
+
 def DetectionStart(builder):
     builder.StartObject(11)
+
 
 def Start(builder):
     DetectionStart(builder)
 
+
 def DetectionAddClassId(builder, classId):
     builder.PrependInt32Slot(0, classId, 0)
+
 
 def AddClassId(builder, classId):
     DetectionAddClassId(builder, classId)
 
+
 def DetectionAddConfidence(builder, confidence):
     builder.PrependFloat64Slot(1, confidence, 0.0)
+
 
 def AddConfidence(builder, confidence):
     DetectionAddConfidence(builder, confidence)
 
+
 def DetectionAddX0(builder, x0):
     builder.PrependInt32Slot(2, x0, 0)
+
 
 def AddX0(builder, x0):
     DetectionAddX0(builder, x0)
 
+
 def DetectionAddY0(builder, y0):
     builder.PrependInt32Slot(3, y0, 0)
+
 
 def AddY0(builder, y0):
     DetectionAddY0(builder, y0)
 
+
 def DetectionAddX1(builder, x1):
     builder.PrependInt32Slot(4, x1, 0)
+
 
 def AddX1(builder, x1):
     DetectionAddX1(builder, x1)
 
+
 def DetectionAddY1(builder, y1):
     builder.PrependInt32Slot(5, y1, 0)
+
 
 def AddY1(builder, y1):
     DetectionAddY1(builder, y1)
 
+
 def DetectionAddCentroidX(builder, centroidX):
     builder.PrependFloat64Slot(6, centroidX, 0.0)
+
 
 def AddCentroidX(builder, centroidX):
     DetectionAddCentroidX(builder, centroidX)
 
+
 def DetectionAddCentroidY(builder, centroidY):
     builder.PrependFloat64Slot(7, centroidY, 0.0)
+
 
 def AddCentroidY(builder, centroidY):
     DetectionAddCentroidY(builder, centroidY)
 
+
 def DetectionAddPitchDeg(builder, pitchDeg):
     builder.PrependFloat64Slot(8, pitchDeg, 0.0)
+
 
 def AddPitchDeg(builder, pitchDeg):
     DetectionAddPitchDeg(builder, pitchDeg)
 
+
 def DetectionAddYawDeg(builder, yawDeg):
     builder.PrependFloat64Slot(9, yawDeg, 0.0)
+
 
 def AddYawDeg(builder, yawDeg):
     DetectionAddYawDeg(builder, yawDeg)
 
+
 def DetectionAddAreaPx(builder, areaPx):
     builder.PrependInt32Slot(10, areaPx, 0)
+
 
 def AddAreaPx(builder, areaPx):
     DetectionAddAreaPx(builder, areaPx)
 
+
 def DetectionEnd(builder):
     return builder.EndObject()
+
 
 def End(builder):
     return DetectionEnd(builder)

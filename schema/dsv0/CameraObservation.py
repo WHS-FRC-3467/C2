@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class CameraObservation(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -20,6 +22,7 @@ class CameraObservation(object):
     def GetRootAsCameraObservation(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
+
     # CameraObservation
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
@@ -31,6 +34,7 @@ class CameraObservation(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from dsv0.PoseSolution import PoseSolution
+
             obj = PoseSolution()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -43,6 +47,7 @@ class CameraObservation(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from dsv0.PoseSolution import PoseSolution
+
             obj = PoseSolution()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -54,7 +59,10 @@ class CameraObservation(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(flatbuffers.number_types.Int32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
+            return self._tab.Get(
+                flatbuffers.number_types.Int32Flags,
+                a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4),
+            )
         return 0
 
     # CameraObservation
@@ -76,35 +84,52 @@ class CameraObservation(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         return o == 0
 
+
 def CameraObservationStart(builder):
     builder.StartObject(3)
+
 
 def Start(builder):
     CameraObservationStart(builder)
 
+
 def CameraObservationAddSolution0(builder, solution0):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(solution0), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        0, flatbuffers.number_types.UOffsetTFlags.py_type(solution0), 0
+    )
+
 
 def AddSolution0(builder, solution0):
     CameraObservationAddSolution0(builder, solution0)
 
+
 def CameraObservationAddSolution1(builder, solution1):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(solution1), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        1, flatbuffers.number_types.UOffsetTFlags.py_type(solution1), 0
+    )
+
 
 def AddSolution1(builder, solution1):
     CameraObservationAddSolution1(builder, solution1)
 
+
 def CameraObservationAddTagIds(builder, tagIds):
-    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(tagIds), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        2, flatbuffers.number_types.UOffsetTFlags.py_type(tagIds), 0
+    )
+
 
 def AddTagIds(builder, tagIds):
     CameraObservationAddTagIds(builder, tagIds)
 
+
 def CameraObservationStartTagIdsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
+
 def StartTagIdsVector(builder, numElems):
     return CameraObservationStartTagIdsVector(builder, numElems)
+
 
 def CameraObservationCreateTagIdsVector(builder, data):
     data = list(data)
@@ -113,11 +138,14 @@ def CameraObservationCreateTagIdsVector(builder, data):
         builder.PrependInt32(item)
     return builder.EndVector()
 
+
 def CreateTagIdsVector(builder, data):
     CameraObservationCreateTagIdsVector(builder, data)
 
+
 def CameraObservationEnd(builder):
     return builder.EndObject()
+
 
 def End(builder):
     return CameraObservationEnd(builder)

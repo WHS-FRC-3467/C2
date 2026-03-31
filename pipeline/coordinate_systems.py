@@ -1,18 +1,27 @@
-from typing import List, Tuple
-import numpy
-from wpimath.geometry import *
-import numpy.typing
 import math
 
+import numpy
+from cv2.typing import MatLike
+from wpimath.geometry import Pose3d, Rotation3d, Translation3d  # type: ignore[import-not-found]
 
-def openCvPoseToWpilib(tvec: numpy.typing.NDArray[numpy.float64], rvec: numpy.typing.NDArray[numpy.float64]) -> Pose3d:
+
+def openCvPoseToWpilib(tvec: MatLike, rvec: MatLike) -> Pose3d:
+    tvec_array = numpy.asarray(tvec, dtype=numpy.float64).reshape(3, 1)
+    rvec_array = numpy.asarray(rvec, dtype=numpy.float64).reshape(3, 1)
     return Pose3d(
-        Translation3d(tvec[2][0], -tvec[0][0], -tvec[1][0]),
+        Translation3d(tvec_array[2][0], -tvec_array[0][0], -tvec_array[1][0]),
         Rotation3d(
-            numpy.array([rvec[2][0], -rvec[0][0], -rvec[1][0]]),
-            math.sqrt(math.pow(rvec[0][0], 2) + math.pow(rvec[1][0], 2) + math.pow(rvec[2][0], 2))
-        ))
+            numpy.array([rvec_array[2][0], -rvec_array[0][0], -rvec_array[1][0]]),
+            math.sqrt(
+                float(
+                    rvec_array[0][0] ** 2
+                    + rvec_array[1][0] ** 2
+                    + rvec_array[2][0] ** 2
+                )
+            ),
+        ),
+    )
 
 
-def wpilibTranslationToOpenCv(translation: Translation3d) -> List[float]:
+def wpilibTranslationToOpenCv(translation: Translation3d) -> list[float]:
     return [-translation.Y(), -translation.Z(), translation.X()]

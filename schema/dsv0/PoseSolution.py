@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class PoseSolution(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -20,6 +22,7 @@ class PoseSolution(object):
     def GetRootAsPoseSolution(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
+
     # PoseSolution
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
@@ -30,6 +33,7 @@ class PoseSolution(object):
         if o != 0:
             x = o + self._tab.Pos
             from dsv0.Pose3d import Pose3d
+
             obj = Pose3d()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -39,29 +43,41 @@ class PoseSolution(object):
     def Error(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Float64Flags, o + self._tab.Pos)
+            return self._tab.Get(
+                flatbuffers.number_types.Float64Flags, o + self._tab.Pos
+            )
         return 0.0
+
 
 def PoseSolutionStart(builder):
     builder.StartObject(2)
 
+
 def Start(builder):
     PoseSolutionStart(builder)
 
+
 def PoseSolutionAddPose(builder, pose):
-    builder.PrependStructSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(pose), 0)
+    builder.PrependStructSlot(
+        0, flatbuffers.number_types.UOffsetTFlags.py_type(pose), 0
+    )
+
 
 def AddPose(builder, pose):
     PoseSolutionAddPose(builder, pose)
 
+
 def PoseSolutionAddError(builder, error):
     builder.PrependFloat64Slot(1, error, 0.0)
+
 
 def AddError(builder, error):
     PoseSolutionAddError(builder, error)
 
+
 def PoseSolutionEnd(builder):
     return builder.EndObject()
+
 
 def End(builder):
     return PoseSolutionEnd(builder)

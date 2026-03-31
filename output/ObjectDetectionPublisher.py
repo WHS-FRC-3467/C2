@@ -1,9 +1,9 @@
 import math
 import os
 import sys
-from typing import List
+from typing import Any
 
-import flatbuffers
+import flatbuffers  # type: ignore[import-untyped]
 import ntcore
 
 from vision_types import ObjectDetectionObservation
@@ -11,7 +11,7 @@ from vision_types import ObjectDetectionObservation
 # Add schema to path for generated flatbuffer modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "schema"))
 
-from objectdetections.Detection import (
+from objectdetections.Detection import (  # type: ignore[import-not-found]
     DetectionAddAreaPx,
     DetectionAddCentroidX,
     DetectionAddCentroidY,
@@ -26,7 +26,7 @@ from objectdetections.Detection import (
     DetectionEnd,
     DetectionStart,
 )
-from objectdetections.DetectionFrame import (
+from objectdetections.DetectionFrame import (  # type: ignore[import-not-found]
     DetectionFrameAddDetections,
     DetectionFrameEnd,
     DetectionFrameStart,
@@ -34,7 +34,7 @@ from objectdetections.DetectionFrame import (
 )
 
 
-def _build_detection(builder: flatbuffers.Builder, detection: ObjectDetectionObservation) -> int:
+def _build_detection(builder: Any, detection: ObjectDetectionObservation) -> int:
     DetectionStart(builder)
     DetectionAddClassId(builder, detection.class_id)
     DetectionAddConfidence(builder, detection.confidence)
@@ -50,7 +50,7 @@ def _build_detection(builder: flatbuffers.Builder, detection: ObjectDetectionObs
     return DetectionEnd(builder)
 
 
-def _build_detections_vector(builder: flatbuffers.Builder, detection_offsets: List[int]) -> int:
+def _build_detections_vector(builder: Any, detection_offsets: list[int]) -> int:
     DetectionFrameStartDetectionsVector(builder, len(detection_offsets))
     for detection_offset in reversed(detection_offsets):
         builder.PrependUOffsetTRelative(detection_offset)
@@ -58,14 +58,15 @@ def _build_detections_vector(builder: flatbuffers.Builder, detection_offsets: Li
 
 
 class NTObjectDetectionPublisher:
-    _init_complete: bool = False
-    _frame_pub: ntcore.RawPublisher
-
     def __init__(self, device_id: str, table_name: str = "video1_yolo") -> None:
         self._device_id = device_id
         self._table_name = table_name
+        self._init_complete = False
+        self._frame_pub: ntcore.RawPublisher | None = None
 
-    def send(self, timestamp: float, detections: List[ObjectDetectionObservation]) -> None:
+    def send(
+        self, timestamp: float, detections: list[ObjectDetectionObservation]
+    ) -> None:
         if not self._init_complete:
             nt_table = ntcore.NetworkTableInstance.getDefault().getTable(
                 f"/{self._device_id}/{self._table_name}"
@@ -76,9 +77,13 @@ class NTObjectDetectionPublisher:
             )
             self._init_complete = True
 
+        assert self._frame_pub is not None
+
         timestamp_us = math.floor(timestamp * 1000000)
         builder = flatbuffers.Builder(256)
-        detection_offsets = [_build_detection(builder, detection) for detection in detections]
+        detection_offsets = [
+            _build_detection(builder, detection) for detection in detections
+        ]
         detections_vec = _build_detections_vector(builder, detection_offsets)
 
         DetectionFrameStart(builder)

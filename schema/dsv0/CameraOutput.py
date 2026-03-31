@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class CameraOutput(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -20,6 +22,7 @@ class CameraOutput(object):
     def GetRootAsCameraOutput(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
+
     # CameraOutput
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
@@ -39,6 +42,7 @@ class CameraOutput(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from dsv0.CameraObservation import CameraObservation
+
             obj = CameraObservation()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -52,32 +56,44 @@ class CameraOutput(object):
             return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
         return 0
 
+
 def CameraOutputStart(builder):
     builder.StartObject(3)
+
 
 def Start(builder):
     CameraOutputStart(builder)
 
+
 def CameraOutputAddCameraIndex(builder, cameraIndex):
     builder.PrependInt32Slot(0, cameraIndex, 0)
+
 
 def AddCameraIndex(builder, cameraIndex):
     CameraOutputAddCameraIndex(builder, cameraIndex)
 
+
 def CameraOutputAddCameraObservation(builder, cameraObservation):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(cameraObservation), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        1, flatbuffers.number_types.UOffsetTFlags.py_type(cameraObservation), 0
+    )
+
 
 def AddCameraObservation(builder, cameraObservation):
     CameraOutputAddCameraObservation(builder, cameraObservation)
 
+
 def CameraOutputAddFps(builder, fps):
     builder.PrependInt32Slot(2, fps, 0)
+
 
 def AddFps(builder, fps):
     CameraOutputAddFps(builder, fps)
 
+
 def CameraOutputEnd(builder):
     return builder.EndObject()
+
 
 def End(builder):
     return CameraOutputEnd(builder)

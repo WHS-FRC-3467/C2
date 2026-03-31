@@ -3,10 +3,12 @@ import ctypes.util
 import math
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 import cv2
 import numpy
+from cv2.typing import MatLike
+from type_defs import FloatArray
 
 from vision_types import ObjectDetectionObservation
 
@@ -18,7 +20,7 @@ class TensorRTDetectorError(RuntimeError):
 @dataclass
 class _TensorBinding:
     name: str
-    shape: Tuple[int, ...]
+    shape: tuple[int, ...]
     dtype: numpy.dtype
     size_bytes: int
     host: numpy.ndarray
@@ -32,7 +34,10 @@ class _CudaRuntime:
     def __init__(self) -> None:
         library_name = ctypes.util.find_library("cudart") or "libcudart.so"
         self._lib = ctypes.CDLL(library_name)
-        self._lib.cudaMalloc.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t]
+        self._lib.cudaMalloc.argtypes = [
+            ctypes.POINTER(ctypes.c_void_p),
+            ctypes.c_size_t,
+        ]
         self._lib.cudaFree.argtypes = [ctypes.c_void_p]
         self._lib.cudaStreamCreate.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
         self._lib.cudaStreamDestroy.argtypes = [ctypes.c_void_p]
@@ -60,16 +65,27 @@ class _CudaRuntime:
 
     def create_stream(self) -> ctypes.c_void_p:
         stream = ctypes.c_void_p()
-        self._check(self._lib.cudaStreamCreate(ctypes.byref(stream)), "cudaStreamCreate")
+        self._check(
+            self._lib.cudaStreamCreate(ctypes.byref(stream)), "cudaStreamCreate"
+        )
         return stream
 
     def destroy_stream(self, stream: ctypes.c_void_p) -> None:
         if stream:
             self._check(self._lib.cudaStreamDestroy(stream), "cudaStreamDestroy")
 
-    def memcpy_async(self, dst: ctypes.c_void_p, src_ptr: int, size_bytes: int, direction: int, stream: ctypes.c_void_p) -> None:
+    def memcpy_async(
+        self,
+        dst: ctypes.c_void_p,
+        src_ptr: int,
+        size_bytes: int,
+        direction: int,
+        stream: ctypes.c_void_p,
+    ) -> None:
         self._check(
-            self._lib.cudaMemcpyAsync(dst, ctypes.c_void_p(src_ptr), size_bytes, direction, stream),
+            self._lib.cudaMemcpyAsync(
+                dst, ctypes.c_void_p(src_ptr), size_bytes, direction, stream
+            ),
             "cudaMemcpyAsync",
         )
 
@@ -82,7 +98,7 @@ class TensorRTYoloDetector:
         self,
         engine_path: str,
         onnx_path: str,
-        camera_matrix: numpy.ndarray,
+        camera_matrix: FloatArray,
         confidence_threshold: float = 0.25,
         iou_threshold: float = 0.45,
         workspace_bytes: int = 1 << 30,
@@ -93,17 +109,17 @@ class TensorRTYoloDetector:
         self._confidence_threshold = confidence_threshold
         self._iou_threshold = iou_threshold
         self._workspace_bytes = workspace_bytes
-        self._trt = None
-        self._logger = None
-        self._cuda: Optional[_CudaRuntime] = None
-        self._runtime = None
-        self._engine = None
-        self._context = None
-        self._stream: Optional[ctypes.c_void_p] = None
-        self._input_name: Optional[str] = None
-        self._input_shape: Optional[Tuple[int, ...]] = None
-        self._input_binding: Optional[_TensorBinding] = None
-        self._output_bindings: List[_TensorBinding] = []
+        self._trt: Any | None = None
+        self._logger: Any | None = None
+        self._cuda: _CudaRuntime | None = None
+        self._runtime: Any | None = None
+        self._engine: Any | None = None
+        self._context: Any | None = None
+        self._stream: ctypes.c_void_p | None = None
+        self._input_name: str | None = None
+        self._input_shape: tuple[int, ...] | None = None
+        self._input_binding: _TensorBinding | None = None
+        self._output_bindings: list[_TensorBinding] = []
         self._initialized = False
 
     def initialize(self, frame_shape: Sequence[int]) -> None:
@@ -116,7 +132,9 @@ class TensorRTYoloDetector:
         try:
             import tensorrt as trt  # type: ignore
         except ModuleNotFoundError as exc:
-            raise TensorRTDetectorError("TensorRT Python bindings are required to run the YOLO detector") from exc
+            raise TensorRTDetectorError(
+                "TensorRT Python bindings are required to run the YOLO detector"
+            ) from exc
 
         self._trt = trt
         self._logger = trt.Logger(trt.Logger.WARNING)
@@ -147,15 +165,23 @@ class TensorRTYoloDetector:
         self._runtime = None
         self._initialized = False
 
-    def detect(self, frame: cv2.Mat) -> List[ObjectDetectionObservation]:
+    def detect(self, frame: MatLike) -> list[ObjectDetectionObservation]:
+        frame_array = numpy.asarray(frame)
         if not self._initialized:
-            self.initialize(frame.shape)
+            self.initialize(frame_array.shape)
 
-        if self._context is None or self._input_binding is None or self._cuda is None or self._stream is None:
+        if (
+            self._context is None
+            or self._input_binding is None
+            or self._cuda is None
+            or self._stream is None
+        ):
             raise TensorRTDetectorError("Detector is not initialized")
 
         input_height, input_width = self._network_input_hw()
-        blob, scale, pad_x, pad_y = self._preprocess(frame, input_width, input_height)
+        blob, scale, pad_x, pad_y = self._preprocess(
+            frame_array, input_width, input_height
+        )
 
         numpy.copyto(self._input_binding.host, blob.reshape(-1))
         self._cuda.memcpy_async(
@@ -166,21 +192,39 @@ class TensorRTYoloDetector:
             self._stream,
         )
 
-        if not self._context.execute_async_v3(int(self._stream.value)):
+        stream_value = self._stream.value
+        if stream_value is None:
+            raise TensorRTDetectorError("CUDA stream handle is not available")
+        if not self._context.execute_async_v3(int(stream_value)):
             raise TensorRTDetectorError("TensorRT execute_async_v3 failed")
 
         for binding in self._output_bindings:
+            device_ptr_value = binding.device_ptr.value
+            if device_ptr_value is None:
+                raise TensorRTDetectorError(
+                    f"Tensor address for {binding.name} is not available"
+                )
             self._cuda.memcpy_async(
                 ctypes.c_void_p(binding.host.ctypes.data),
-                binding.device_ptr.value,
+                device_ptr_value,
                 binding.size_bytes,
                 _CudaRuntime.cudaMemcpyDeviceToHost,
                 self._stream,
             )
         self._cuda.synchronize(self._stream)
 
-        output_tensors = [binding.host.reshape(binding.shape).copy() for binding in self._output_bindings]
-        return self._postprocess(output_tensors, frame.shape[1], frame.shape[0], scale, pad_x, pad_y)
+        output_tensors = [
+            binding.host.reshape(binding.shape).copy()
+            for binding in self._output_bindings
+        ]
+        return self._postprocess(
+            output_tensors,
+            frame_array.shape[1],
+            frame_array.shape[0],
+            scale,
+            pad_x,
+            pad_y,
+        )
 
     def _build_engine(self, frame_height: int, frame_width: int) -> None:
         if not os.path.exists(self._onnx_path):
@@ -189,28 +233,42 @@ class TensorRTYoloDetector:
             )
 
         trt = self._trt
-        builder = trt.Builder(self._logger)
-        network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
-        parser = trt.OnnxParser(network, self._logger)
+        logger = self._logger
+        if trt is None or logger is None:
+            raise TensorRTDetectorError("TensorRT is not initialized")
+
+        builder = trt.Builder(logger)
+        network = builder.create_network(
+            1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+        )
+        parser = trt.OnnxParser(network, logger)
         with open(self._onnx_path, "rb") as onnx_file:
             if not parser.parse(onnx_file.read()):
                 errors = [parser.get_error(i).desc() for i in range(parser.num_errors)]
-                raise TensorRTDetectorError("Failed to parse ONNX: " + "; ".join(errors))
+                raise TensorRTDetectorError(
+                    "Failed to parse ONNX: " + "; ".join(errors)
+                )
 
         config = builder.create_builder_config()
-        config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, self._workspace_bytes)
+        config.set_memory_pool_limit(
+            trt.MemoryPoolType.WORKSPACE, self._workspace_bytes
+        )
         if builder.platform_has_fast_fp16:
             config.set_flag(trt.BuilderFlag.FP16)
 
         if network.num_inputs != 1:
-            raise TensorRTDetectorError(f"Expected one input tensor, found {network.num_inputs}")
+            raise TensorRTDetectorError(
+                f"Expected one input tensor, found {network.num_inputs}"
+            )
 
         input_tensor = network.get_input(0)
         input_shape = tuple(int(dim) for dim in input_tensor.shape)
         if any(dim < 0 for dim in input_shape):
             profile = builder.create_optimization_profile()
             target_shape = self._shape_for_frame(input_shape, frame_height, frame_width)
-            profile.set_shape(input_tensor.name, target_shape, target_shape, target_shape)
+            profile.set_shape(
+                input_tensor.name, target_shape, target_shape, target_shape
+            )
             config.add_optimization_profile(profile)
 
         serialized_engine = builder.build_serialized_network(network, config)
@@ -222,12 +280,21 @@ class TensorRTYoloDetector:
 
     def _load_engine(self, frame_height: int, frame_width: int) -> None:
         trt = self._trt
-        self._runtime = trt.Runtime(self._logger)
+        logger = self._logger
+        if trt is None or logger is None:
+            raise TensorRTDetectorError("TensorRT is not initialized")
+
+        runtime = trt.Runtime(logger)
+        self._runtime = runtime
+        if runtime is None:
+            raise TensorRTDetectorError("Failed to create TensorRT runtime")
         with open(self._engine_path, "rb") as engine_file:
             engine_data = engine_file.read()
-        self._engine = self._runtime.deserialize_cuda_engine(engine_data)
+        self._engine = runtime.deserialize_cuda_engine(engine_data)
         if self._engine is None:
-            raise TensorRTDetectorError(f"Failed to deserialize TensorRT engine {self._engine_path}")
+            raise TensorRTDetectorError(
+                f"Failed to deserialize TensorRT engine {self._engine_path}"
+            )
 
         self._context = self._engine.create_execution_context()
         if self._context is None:
@@ -236,44 +303,84 @@ class TensorRTYoloDetector:
         input_names = [
             self._engine.get_tensor_name(i)
             for i in range(self._engine.num_io_tensors)
-            if self._engine.get_tensor_mode(self._engine.get_tensor_name(i)) == trt.TensorIOMode.INPUT
+            if self._engine.get_tensor_mode(self._engine.get_tensor_name(i))
+            == trt.TensorIOMode.INPUT
         ]
         if len(input_names) != 1:
-            raise TensorRTDetectorError(f"Expected one engine input tensor, found {len(input_names)}")
+            raise TensorRTDetectorError(
+                f"Expected one engine input tensor, found {len(input_names)}"
+            )
         self._input_name = input_names[0]
 
-        input_shape = tuple(int(dim) for dim in self._engine.get_tensor_shape(self._input_name))
+        input_shape = tuple(
+            int(dim) for dim in self._engine.get_tensor_shape(self._input_name)
+        )
         if any(dim < 0 for dim in input_shape):
-            runtime_shape = self._shape_for_frame(input_shape, frame_height, frame_width)
+            runtime_shape = self._shape_for_frame(
+                input_shape, frame_height, frame_width
+            )
             if not self._context.set_input_shape(self._input_name, runtime_shape):
-                raise TensorRTDetectorError(f"Failed to set runtime input shape for {self._input_name}")
-            input_shape = tuple(int(dim) for dim in self._context.get_tensor_shape(self._input_name))
+                raise TensorRTDetectorError(
+                    f"Failed to set runtime input shape for {self._input_name}"
+                )
+            input_shape = tuple(
+                int(dim) for dim in self._context.get_tensor_shape(self._input_name)
+            )
         self._input_shape = input_shape
 
-        self._input_binding = self._allocate_binding(self._input_name, input_shape)
-        self._context.set_tensor_address(self._input_name, int(self._input_binding.device_ptr.value))
+        input_name = self._input_name
+        if input_name is None:
+            raise TensorRTDetectorError("Engine input tensor name is not available")
+
+        self._input_binding = self._allocate_binding(input_name, input_shape)
+        input_ptr_value = self._input_binding.device_ptr.value
+        if input_ptr_value is None:
+            raise TensorRTDetectorError(
+                f"Tensor address for {input_name} is not available"
+            )
+        self._context.set_tensor_address(input_name, int(input_ptr_value))
 
         self._output_bindings = []
         for tensor_index in range(self._engine.num_io_tensors):
             tensor_name = self._engine.get_tensor_name(tensor_index)
             if tensor_name == self._input_name:
                 continue
-            tensor_shape = tuple(int(dim) for dim in self._context.get_tensor_shape(tensor_name))
+            tensor_shape = tuple(
+                int(dim) for dim in self._context.get_tensor_shape(tensor_name)
+            )
             if any(dim < 0 for dim in tensor_shape):
-                raise TensorRTDetectorError(f"Dynamic output shape for {tensor_name} is not resolved")
+                raise TensorRTDetectorError(
+                    f"Dynamic output shape for {tensor_name} is not resolved"
+                )
             binding = self._allocate_binding(tensor_name, tensor_shape)
-            self._context.set_tensor_address(tensor_name, int(binding.device_ptr.value))
+            binding_ptr_value = binding.device_ptr.value
+            if binding_ptr_value is None:
+                raise TensorRTDetectorError(
+                    f"Tensor address for {tensor_name} is not available"
+                )
+            self._context.set_tensor_address(tensor_name, int(binding_ptr_value))
             self._output_bindings.append(binding)
 
-    def _allocate_binding(self, tensor_name: str, tensor_shape: Tuple[int, ...]) -> _TensorBinding:
-        dtype = numpy.dtype(self._trt.nptype(self._engine.get_tensor_dtype(tensor_name)))
+    def _allocate_binding(
+        self, tensor_name: str, tensor_shape: tuple[int, ...]
+    ) -> _TensorBinding:
+        if self._trt is None or self._engine is None or self._cuda is None:
+            raise TensorRTDetectorError("TensorRT is not initialized")
+
+        dtype = numpy.dtype(
+            self._trt.nptype(self._engine.get_tensor_dtype(tensor_name))
+        )
         host = numpy.empty(int(numpy.prod(tensor_shape)), dtype=dtype)
         size_bytes = int(host.nbytes)
         device_ptr = self._cuda.malloc(size_bytes)
-        return _TensorBinding(tensor_name, tensor_shape, dtype, size_bytes, host, device_ptr)
+        return _TensorBinding(
+            tensor_name, tensor_shape, dtype, size_bytes, host, device_ptr
+        )
 
     @staticmethod
-    def _shape_for_frame(input_shape: Tuple[int, ...], frame_height: int, frame_width: int) -> Tuple[int, ...]:
+    def _shape_for_frame(
+        input_shape: tuple[int, ...], frame_height: int, frame_width: int
+    ) -> tuple[int, ...]:
         target_shape = list(input_shape)
         if len(target_shape) == 4:
             target_shape[0] = 1 if target_shape[0] < 0 else target_shape[0]
@@ -290,7 +397,7 @@ class TensorRTYoloDetector:
             raise TensorRTDetectorError(f"Unsupported input rank: {len(target_shape)}")
         return tuple(int(dim) for dim in target_shape)
 
-    def _network_input_hw(self) -> Tuple[int, int]:
+    def _network_input_hw(self) -> tuple[int, int]:
         if self._input_shape is None:
             raise TensorRTDetectorError("Input shape is not available")
         if len(self._input_shape) == 4:
@@ -300,22 +407,27 @@ class TensorRTYoloDetector:
         raise TensorRTDetectorError(f"Unsupported input rank: {len(self._input_shape)}")
 
     @staticmethod
-    def _preprocess(frame: cv2.Mat, input_width: int, input_height: int) -> Tuple[numpy.ndarray, float, int, int]:
-        if len(frame.shape) == 2:
-            color = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    def _preprocess(
+        frame: MatLike, input_width: int, input_height: int
+    ) -> tuple[numpy.ndarray, float, int, int]:
+        frame_array = numpy.asarray(frame)
+        if len(frame_array.shape) == 2:
+            color = cv2.cvtColor(frame_array, cv2.COLOR_GRAY2BGR)
         else:
-            color = frame
+            color = frame_array
 
         frame_height, frame_width = color.shape[:2]
         scale = min(input_width / frame_width, input_height / frame_height)
         resized_width = int(round(frame_width * scale))
         resized_height = int(round(frame_height * scale))
-        resized = cv2.resize(color, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR)
+        resized = cv2.resize(
+            color, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR
+        )
 
         canvas = numpy.full((input_height, input_width, 3), 114, dtype=numpy.uint8)
         pad_x = (input_width - resized_width) // 2
         pad_y = (input_height - resized_height) // 2
-        canvas[pad_y:pad_y + resized_height, pad_x:pad_x + resized_width] = resized
+        canvas[pad_y : pad_y + resized_height, pad_x : pad_x + resized_width] = resized
 
         rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
         chw = numpy.transpose(rgb, (2, 0, 1)).astype(numpy.float32) / 255.0
@@ -323,21 +435,21 @@ class TensorRTYoloDetector:
 
     def _postprocess(
         self,
-        output_tensors: List[numpy.ndarray],
+        output_tensors: list[numpy.ndarray],
         frame_width: int,
         frame_height: int,
         scale: float,
         pad_x: int,
         pad_y: int,
-    ) -> List[ObjectDetectionObservation]:
+    ) -> list[ObjectDetectionObservation]:
         if not output_tensors:
             return []
 
         tensor = max(output_tensors, key=lambda item: item.size)
         candidates = self._normalize_output_rows(tensor)
-        boxes_xywh: List[List[int]] = []
-        confidences: List[float] = []
-        class_ids: List[int] = []
+        boxes_xywh: list[list[int]] = []
+        confidences: list[float] = []
+        class_ids: list[int] = []
 
         input_height, input_width = self._network_input_hw()
 
@@ -368,11 +480,13 @@ class TensorRTYoloDetector:
         if not boxes_xywh:
             return []
 
-        kept = cv2.dnn.NMSBoxes(boxes_xywh, confidences, self._confidence_threshold, self._iou_threshold)
+        kept = cv2.dnn.NMSBoxes(
+            boxes_xywh, confidences, self._confidence_threshold, self._iou_threshold
+        )
         if len(kept) == 0:
             return []
 
-        detections: List[ObjectDetectionObservation] = []
+        detections: list[ObjectDetectionObservation] = []
         for index in numpy.array(kept).reshape(-1):
             x0, y0, width, height = boxes_xywh[int(index)]
             x1 = x0 + width
@@ -419,7 +533,7 @@ class TensorRTYoloDetector:
         row: numpy.ndarray,
         input_width: int,
         input_height: int,
-    ) -> Optional[Tuple[float, float, float, float, float, int]]:
+    ) -> tuple[float, float, float, float, float, int] | None:
         cols = row.shape[0]
         if cols < 6:
             return None
@@ -436,7 +550,14 @@ class TensorRTYoloDetector:
                 y1 *= input_height
                 width = x1 - x0
                 height = y1 - y0
-            return x0 + width / 2.0, y0 + height / 2.0, width, height, confidence, class_id
+            return (
+                x0 + width / 2.0,
+                y0 + height / 2.0,
+                width,
+                height,
+                confidence,
+                class_id,
+            )
 
         xywh = row[:4].astype(float)
         if max(abs(xywh[0]), abs(xywh[1]), abs(xywh[2]), abs(xywh[3])) <= 2.0:
@@ -466,9 +587,16 @@ class TensorRTYoloDetector:
                 class_id = int(numpy.argmax(class_scores))
                 confidence = float(class_scores[class_id])
 
-        return float(xywh[0]), float(xywh[1]), float(xywh[2]), float(xywh[3]), confidence, class_id
+        return (
+            float(xywh[0]),
+            float(xywh[1]),
+            float(xywh[2]),
+            float(xywh[3]),
+            confidence,
+            class_id,
+        )
 
-    def _pixel_to_angles(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
+    def _pixel_to_angles(self, pixel_x: float, pixel_y: float) -> tuple[float, float]:
         fx = float(self._camera_matrix[0, 0])
         fy = float(self._camera_matrix[1, 1])
         cx = float(self._camera_matrix[0, 2])

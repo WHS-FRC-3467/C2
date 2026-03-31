@@ -1,30 +1,36 @@
-from typing import List, Union
-
 import cv2
 import numpy
 from config.config import ConfigStore
 from vision_types import CameraPoseObservation, FiducialImageObservation
-from wpimath.geometry import *
+from wpimath.geometry import Pose3d, Quaternion, Rotation3d, Transform3d, Translation3d  # type: ignore[import-not-found]
 
-from pipeline.coordinate_systems import (openCvPoseToWpilib,
-                                         wpilibTranslationToOpenCv)
+from pipeline.coordinate_systems import openCvPoseToWpilib, wpilibTranslationToOpenCv
 
 
 class CameraPoseEstimator:
     def __init__(self) -> None:
         raise NotImplementedError
 
-    def solve_camera_pose(self, image_observations: List[FiducialImageObservation], config_store: ConfigStore) -> Union[CameraPoseObservation, None]:
+    def solve_camera_pose(
+        self,
+        image_observations: list[FiducialImageObservation],
+        config_store: ConfigStore,
+    ) -> CameraPoseObservation | None:
         raise NotImplementedError
 
 
 class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
     def __init__(self) -> None:
-        pass
+        return None
 
-    def solve_camera_pose(self, image_observations: List[FiducialImageObservation], config_store: ConfigStore) -> Union[CameraPoseObservation, None]:
+    def solve_camera_pose(
+        self,
+        image_observations: list[FiducialImageObservation],
+        config_store: ConfigStore,
+    ) -> CameraPoseObservation | None:
         # Exit if no tag layout available
-        if config_store.remote_config.tag_layout == None:
+        tag_layout = config_store.remote_config.tag_layout
+        if tag_layout is None:
             return None
 
         # Exit if no observations available
@@ -33,37 +39,49 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
 
         # Create set of object and image points
         fid_size = config_store.remote_config.fiducial_size_m
-        object_points = []
-        image_points = []
-        tag_ids = []
-        tag_poses = []
+        object_points: list[list[float]] = []
+        image_points: list[list[float]] = []
+        tag_ids: list[int] = []
+        tag_poses: list[Pose3d] = []
         for observation in image_observations:
-            tag_pose = None
-            for tag_data in config_store.remote_config.tag_layout["tags"]:
+            tag_pose: Pose3d | None = None
+            for tag_data in tag_layout.get("tags", []):
                 if tag_data["ID"] == observation.tag_id:
                     tag_pose = Pose3d(
                         Translation3d(
                             tag_data["pose"]["translation"]["x"],
                             tag_data["pose"]["translation"]["y"],
-                            tag_data["pose"]["translation"]["z"]
+                            tag_data["pose"]["translation"]["z"],
                         ),
-                        Rotation3d(Quaternion(
-                            tag_data["pose"]["rotation"]["quaternion"]["W"],
-                            tag_data["pose"]["rotation"]["quaternion"]["X"],
-                            tag_data["pose"]["rotation"]["quaternion"]["Y"],
-                            tag_data["pose"]["rotation"]["quaternion"]["Z"]
-                        )))
-            if tag_pose != None:
+                        Rotation3d(
+                            Quaternion(
+                                tag_data["pose"]["rotation"]["quaternion"]["W"],
+                                tag_data["pose"]["rotation"]["quaternion"]["X"],
+                                tag_data["pose"]["rotation"]["quaternion"]["Y"],
+                                tag_data["pose"]["rotation"]["quaternion"]["Z"],
+                            )
+                        ),
+                    )
+                    break
+            if tag_pose is not None:
                 # Add object points by transforming from the tag center
-                corner_0 = tag_pose + Transform3d(Translation3d(0, fid_size / 2.0, -fid_size / 2.0), Rotation3d())
-                corner_1 = tag_pose + Transform3d(Translation3d(0, -fid_size / 2.0, -fid_size / 2.0), Rotation3d())
-                corner_2 = tag_pose + Transform3d(Translation3d(0, -fid_size / 2.0, fid_size / 2.0), Rotation3d())
-                corner_3 = tag_pose + Transform3d(Translation3d(0, fid_size / 2.0, fid_size / 2.0), Rotation3d())
+                corner_0 = tag_pose + Transform3d(
+                    Translation3d(0, fid_size / 2.0, -fid_size / 2.0), Rotation3d()
+                )
+                corner_1 = tag_pose + Transform3d(
+                    Translation3d(0, -fid_size / 2.0, -fid_size / 2.0), Rotation3d()
+                )
+                corner_2 = tag_pose + Transform3d(
+                    Translation3d(0, -fid_size / 2.0, fid_size / 2.0), Rotation3d()
+                )
+                corner_3 = tag_pose + Transform3d(
+                    Translation3d(0, fid_size / 2.0, fid_size / 2.0), Rotation3d()
+                )
                 object_points += [
                     wpilibTranslationToOpenCv(corner_0.translation()),
                     wpilibTranslationToOpenCv(corner_1.translation()),
                     wpilibTranslationToOpenCv(corner_2.translation()),
-                    wpilibTranslationToOpenCv(corner_3.translation())
+                    wpilibTranslationToOpenCv(corner_3.translation()),
                 ]
 
                 # Add image points from observation
@@ -71,7 +89,7 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
                     [observation.corners[0][0][0], observation.corners[0][0][1]],
                     [observation.corners[0][1][0], observation.corners[0][1][1]],
                     [observation.corners[0][2][0], observation.corners[0][2][1]],
-                    [observation.corners[0][3][0], observation.corners[0][3][1]]
+                    [observation.corners[0][3][0], observation.corners[0][3][1]],
                 ]
 
                 # Add tag ID and pose
@@ -80,44 +98,88 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
 
         # Single tag, return two poses
         if len(tag_ids) == 1:
-            object_points = numpy.array([[-fid_size / 2.0, fid_size / 2.0, 0.0],
-                                         [fid_size / 2.0, fid_size / 2.0, 0.0],
-                                         [fid_size / 2.0, -fid_size / 2.0, 0.0],
-                                         [-fid_size / 2.0, -fid_size / 2.0, 0.0]])
+            object_points_single = numpy.array(
+                [
+                    [-fid_size / 2.0, fid_size / 2.0, 0.0],
+                    [fid_size / 2.0, fid_size / 2.0, 0.0],
+                    [fid_size / 2.0, -fid_size / 2.0, 0.0],
+                    [-fid_size / 2.0, -fid_size / 2.0, 0.0],
+                ],
+                dtype=numpy.float64,
+            )
             try:
-                _, rvecs, tvecs, errors = cv2.solvePnPGeneric(object_points, numpy.array(image_points),
-                                                              config_store.local_config.camera_matrix, config_store.local_config.distortion_coefficients, flags=cv2.SOLVEPNP_IPPE_SQUARE)
-            except:
+                _, rvecs, tvecs, errors = cv2.solvePnPGeneric(
+                    object_points_single,
+                    numpy.array(image_points, dtype=numpy.float64),
+                    config_store.local_config.camera_matrix,
+                    config_store.local_config.distortion_coefficients,
+                    flags=cv2.SOLVEPNP_IPPE_SQUARE,
+                )
+            except cv2.error:
                 return None
 
             # Calculate WPILib camera poses
             field_to_tag_pose = tag_poses[0]
-            camera_to_tag_pose_0 = openCvPoseToWpilib(tvecs[0], rvecs[0])
-            camera_to_tag_pose_1 = openCvPoseToWpilib(tvecs[1], rvecs[1])
-            camera_to_tag_0 = Transform3d(camera_to_tag_pose_0.translation(), camera_to_tag_pose_0.rotation())
-            camera_to_tag_1 = Transform3d(camera_to_tag_pose_1.translation(), camera_to_tag_pose_1.rotation())
+            camera_to_tag_pose_0 = openCvPoseToWpilib(
+                numpy.asarray(tvecs[0], dtype=numpy.float64),
+                numpy.asarray(rvecs[0], dtype=numpy.float64),
+            )
+            camera_to_tag_pose_1 = openCvPoseToWpilib(
+                numpy.asarray(tvecs[1], dtype=numpy.float64),
+                numpy.asarray(rvecs[1], dtype=numpy.float64),
+            )
+            camera_to_tag_0 = Transform3d(
+                camera_to_tag_pose_0.translation(), camera_to_tag_pose_0.rotation()
+            )
+            camera_to_tag_1 = Transform3d(
+                camera_to_tag_pose_1.translation(), camera_to_tag_pose_1.rotation()
+            )
             field_to_camera_0 = field_to_tag_pose.transformBy(camera_to_tag_0.inverse())
             field_to_camera_1 = field_to_tag_pose.transformBy(camera_to_tag_1.inverse())
-            field_to_camera_pose_0 = Pose3d(field_to_camera_0.translation(), field_to_camera_0.rotation())
-            field_to_camera_pose_1 = Pose3d(field_to_camera_1.translation(), field_to_camera_1.rotation())
+            field_to_camera_pose_0 = Pose3d(
+                field_to_camera_0.translation(), field_to_camera_0.rotation()
+            )
+            field_to_camera_pose_1 = Pose3d(
+                field_to_camera_1.translation(), field_to_camera_1.rotation()
+            )
 
             # Return result
-            return CameraPoseObservation(tag_ids, field_to_camera_pose_0, errors[0][0], field_to_camera_pose_1, errors[1][0])
+            return CameraPoseObservation(
+                tag_ids,
+                field_to_camera_pose_0,
+                errors[0][0],
+                field_to_camera_pose_1,
+                errors[1][0],
+            )
 
         # Multi-tag, return one pose
         else:
             # Run SolvePNP with all tags
             try:
-                _, rvecs, tvecs, errors = cv2.solvePnPGeneric(numpy.array(object_points), numpy.array(image_points),
-                                                              config_store.local_config.camera_matrix, config_store.local_config.distortion_coefficients, flags=cv2.SOLVEPNP_SQPNP)
-            except:
+                _, rvecs, tvecs, errors = cv2.solvePnPGeneric(
+                    numpy.array(object_points, dtype=numpy.float64),
+                    numpy.array(image_points, dtype=numpy.float64),
+                    config_store.local_config.camera_matrix,
+                    config_store.local_config.distortion_coefficients,
+                    flags=cv2.SOLVEPNP_SQPNP,
+                )
+            except cv2.error:
                 return None
 
             # Calculate WPILib camera pose
-            camera_to_field_pose = openCvPoseToWpilib(tvecs[0], rvecs[0])
-            camera_to_field = Transform3d(camera_to_field_pose.translation(), camera_to_field_pose.rotation())
+            camera_to_field_pose = openCvPoseToWpilib(
+                numpy.asarray(tvecs[0], dtype=numpy.float64),
+                numpy.asarray(rvecs[0], dtype=numpy.float64),
+            )
+            camera_to_field = Transform3d(
+                camera_to_field_pose.translation(), camera_to_field_pose.rotation()
+            )
             field_to_camera = camera_to_field.inverse()
-            field_to_camera_pose = Pose3d(field_to_camera.translation(), field_to_camera.rotation())
+            field_to_camera_pose = Pose3d(
+                field_to_camera.translation(), field_to_camera.rotation()
+            )
 
             # Return result
-            return CameraPoseObservation(tag_ids, field_to_camera_pose, errors[0][0], None, None)
+            return CameraPoseObservation(
+                tag_ids, field_to_camera_pose, errors[0][0], None, None
+            )
