@@ -16,3 +16,14 @@ def openCvPoseToWpilib(tvec: numpy.typing.NDArray[numpy.float64], rvec: numpy.ty
 
 def wpilibTranslationToOpenCv(translation: Translation3d) -> List[float]:
     return [-translation.Y(), -translation.Z(), translation.X()]
+
+
+def wpilibPoseToOpenCv(pose: Pose3d) -> Tuple[numpy.ndarray, numpy.ndarray]:
+    """Convert a WPILib Pose3d to OpenCV rvec/tvec."""
+    t = pose.translation()
+    tvec = numpy.array([[-t.Y()], [-t.Z()], [t.X()]])
+    r = pose.rotation()
+    axis = r.axis()
+    angle = r.angle()
+    rvec = numpy.array([[-axis.y * angle], [-axis.z * angle], [axis.x * angle]])
+    return rvec, tvec

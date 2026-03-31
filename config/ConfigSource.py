@@ -5,6 +5,7 @@ import ntcore
 import numpy
 
 from config.config import ConfigStore, RemoteConfig
+from wpimath.geometry import Pose3d, Translation3d, Rotation3d, Quaternion
 
 
 class ConfigSource:
@@ -51,6 +52,14 @@ class FileConfigSource(ConfigSource):
 
         # Legacy: has_calibration is True if any camera is calibrated
         config_store.local_config.has_calibration = any(config_store.local_config.has_calibrations)
+
+        # Load camera extrinsics (robot_to_camera transforms)
+        config_store.local_config.camera_extrinsics = []
+        for ext in config_data.get("camera_extrinsics", []):
+            config_store.local_config.camera_extrinsics.append(Pose3d(
+                Translation3d(ext["x"], ext["y"], ext["z"]),
+                Rotation3d(Quaternion(ext["qw"], ext["qx"], ext["qy"], ext["qz"]))
+            ))
 
 
 class NTConfigSource(ConfigSource):

@@ -13,7 +13,7 @@ from config.ConfigSource import ConfigSource, FileConfigSource, NTConfigSource
 from output.OutputPublisher import NTFlatbufferOutputPublisher, OutputPublisher
 from output.overlay_util import *
 from output.StreamServer import MjpegServer, RawCameraMjpegServer
-from pipeline.CameraPoseEstimator import MultiTargetCameraPoseEstimator
+from pipeline.CameraPoseEstimator import MultiTargetCameraPoseEstimator, MultiCameraFusedPoseEstimator
 from pipeline.Capture import MultiCameraCapture
 from pipeline.ArucoNanoDetector import ArucoNanoFiducialDetector
 from pipeline.FiducialDetector import ArucoFiducialDetector
@@ -31,6 +31,7 @@ if __name__ == "__main__":
     # Per-camera detector instances for thread safety (C library releases GIL)
     fiducial_detectors = [ArucoNanoFiducialDetector(cv2.aruco.DICT_APRILTAG_36h11) for _ in range(num_cameras)]
     camera_pose_estimator = MultiTargetCameraPoseEstimator()
+    fused_pose_estimator = MultiCameraFusedPoseEstimator()
     output_publishers = [NTFlatbufferOutputPublisher(i) for i in range(num_cameras)]
     stream_server = MjpegServer()
     raw_camera_servers = [RawCameraMjpegServer(i) for i in range(num_cameras)]
@@ -101,6 +102,9 @@ if __name__ == "__main__":
             all_detections = [f.result() for f in detect_futures]
             t_det = time.perf_counter()
 
+            # Try fused multi-camera solve first
+            fused_observation = fused_pose_estimator.solve_fused_pose(all_detections, config)
+
             for cam_idx in range(num_cameras):
                 cam_config = config.for_camera(cam_idx)
                 if not cam_config.local_config.has_calibration:
@@ -112,8 +116,13 @@ if __name__ == "__main__":
                 display_sub = display_image[:, cam_idx * sub_width:(cam_idx + 1) * sub_width]
                 [overlay_image_observation(display_sub, x) for x in image_observations]
 
-                camera_pose_observation = camera_pose_estimator.solve_camera_pose(
-                    image_observations, cam_config)
+                if fused_observation is not None:
+                    # Use fused result for all cameras that contributed
+                    camera_pose_observation = fused_observation
+                else:
+                    # Fall back to per-camera solve
+                    camera_pose_observation = camera_pose_estimator.solve_camera_pose(
+                        image_observations, cam_config)
 
                 output_publishers[cam_idx].send(cam_config, timestamp, camera_pose_observation, fps if cam_idx == 0 else None)
             t_pose = time.perf_counter()
