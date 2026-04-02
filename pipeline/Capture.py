@@ -2,6 +2,7 @@ import dataclasses
 import subprocess
 import sys
 import time
+from collections import deque
 from typing import Tuple
 
 import cv2
@@ -116,13 +117,14 @@ class MultiCameraCapture(Capture):
     """
 
     WATCHDOG_THRESHOLD_S = 2.0
-    WATCHDOG_MAX_CONSECUTIVE = 3
+    WATCHDOG_MAX_SLOW_FRAMES = 3
+    WATCHDOG_WINDOW_S = 15.0
 
     def __init__(self) -> None:
         self._video = None
         self._last_config = None
         self._needs_exposure_apply = False
-        self._slow_frame_count = 0
+        self._slow_frame_times: deque[float] = deque()
 
     def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
         if self._video is not None and self._config_changed(self._last_config, config_store):
@@ -173,15 +175,18 @@ class MultiCameraCapture(Capture):
                 sys.exit(1)
 
             # Watchdog: detect frozen camera (e.g. unplugged) by slow captures
+            now = time.monotonic()
             if elapsed > self.WATCHDOG_THRESHOLD_S:
-                self._slow_frame_count += 1
-                print(f"Watchdog: slow frame capture ({elapsed:.2f}s), count={self._slow_frame_count}/{self.WATCHDOG_MAX_CONSECUTIVE}")
-                if self._slow_frame_count >= self.WATCHDOG_MAX_CONSECUTIVE:
-                    print("Watchdog: too many consecutive slow frames, exiting for restart")
+                self._slow_frame_times.append(now)
+                # Expire entries outside the window
+                while self._slow_frame_times and self._slow_frame_times[0] < now - self.WATCHDOG_WINDOW_S:
+                    self._slow_frame_times.popleft()
+                count = len(self._slow_frame_times)
+                print(f"Watchdog: slow frame capture ({elapsed:.2f}s), count={count}/{self.WATCHDOG_MAX_SLOW_FRAMES} in last {self.WATCHDOG_WINDOW_S:.0f}s")
+                if count >= self.WATCHDOG_MAX_SLOW_FRAMES:
+                    print("Watchdog: too many slow frames, exiting for restart")
                     self._video.release()
                     sys.exit(1)
-            else:
-                self._slow_frame_count = 0
 
             # Apply exposure/gain via v4l2-ctl after stream is active
             if self._needs_exposure_apply:
