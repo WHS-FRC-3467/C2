@@ -115,10 +115,14 @@ class MultiCameraCapture(Capture):
     split_frame() to divide it into individual camera sub-frames.
     """
 
+    WATCHDOG_THRESHOLD_S = 2.0
+    WATCHDOG_MAX_CONSECUTIVE = 3
+
     def __init__(self) -> None:
         self._video = None
         self._last_config = None
         self._needs_exposure_apply = False
+        self._slow_frame_count = 0
 
     def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
         if self._video is not None and self._config_changed(self._last_config, config_store):
@@ -158,12 +162,26 @@ class MultiCameraCapture(Capture):
                                         dataclasses.replace(config_store.remote_config))
 
         if self._video is not None:
+            t_start = time.monotonic()
             retval, image = self._video.read()
+            elapsed = time.monotonic() - t_start
+
             if not retval:
                 print("Capture session failed, restarting")
                 self._video.release()
                 self._video = None
                 sys.exit(1)
+
+            # Watchdog: detect frozen camera (e.g. unplugged) by slow captures
+            if elapsed > self.WATCHDOG_THRESHOLD_S:
+                self._slow_frame_count += 1
+                print(f"Watchdog: slow frame capture ({elapsed:.2f}s), count={self._slow_frame_count}/{self.WATCHDOG_MAX_CONSECUTIVE}")
+                if self._slow_frame_count >= self.WATCHDOG_MAX_CONSECUTIVE:
+                    print("Watchdog: too many consecutive slow frames, exiting for restart")
+                    self._video.release()
+                    sys.exit(1)
+            else:
+                self._slow_frame_count = 0
 
             # Apply exposure/gain via v4l2-ctl after stream is active
             if self._needs_exposure_apply:
