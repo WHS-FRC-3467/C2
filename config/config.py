@@ -4,6 +4,7 @@ from typing import List
 
 import numpy
 import numpy.typing
+from wpimath.geometry import Pose3d
 
 
 @dataclass
@@ -19,6 +20,8 @@ class LocalConfig:
     camera_matrices: List = field(default_factory=list)
     distortion_coefficients_list: List = field(default_factory=list)
     has_calibrations: List[bool] = field(default_factory=list)
+    # Per-camera extrinsics (robot_to_camera transforms)
+    camera_extrinsics: List[Pose3d] = field(default_factory=list)
 
 
 @dataclass
