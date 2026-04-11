@@ -1,4 +1,4 @@
-"""Standalone NetworkTables server that publishes config for both aruco and object detection."""
+"""Standalone NetworkTables server for aruco detection mode."""
 
 import json
 import math
@@ -13,13 +13,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "schema"))
 from dsv0.Frame import Frame
 from dsv0.Vec3 import Vec3
 from dsv0.Quaternion import Quaternion
-from objectdetections.DetectionFrame import DetectionFrame
 
-ARUCO_DEVICE_ID = "dsv0"
-OBJDETECT_DEVICE_ID = "dsv1"
+DEVICE_ID = "dsv0"
 NUM_CAMERAS = 4
 
-# Minimal tag layout with a single tag for testing
 TAG_LAYOUT = json.dumps({
     "tags": [
         {
@@ -90,34 +87,12 @@ def format_result(r):
     return s
 
 
-def parse_detection_frame(buf):
-    if not buf or len(buf) == 0:
-        return None
+if __name__ == "__main__":
+    inst = ntcore.NetworkTableInstance.getDefault()
+    inst.startServer()
+    print("NetworkTables server started (aruco mode)")
 
-    frame = DetectionFrame.GetRootAs(buf, 0)
-    detections = []
-    for i in range(frame.DetectionsLength()):
-        det = frame.Detections(i)
-        detections.append({
-            "class_id": det.ClassId(),
-            "confidence": det.Confidence(),
-            "x0": det.X0(), "y0": det.Y0(),
-            "x1": det.X1(), "y1": det.Y1(),
-            "yaw": det.YawDeg(),
-            "pitch": det.PitchDeg(),
-            "area": det.AreaPx(),
-        })
-    return detections
-
-
-def format_detection(d):
-    return (f"cls={d['class_id']} conf={d['confidence']:.2f} "
-            f"[{d['x0']},{d['y0']}-{d['x1']},{d['y1']}] "
-            f"yaw={d['yaw']:+.1f}° pitch={d['pitch']:+.1f}° area={d['area']}")
-
-
-def setup_aruco(inst):
-    table = inst.getTable(f"/{ARUCO_DEVICE_ID}/config")
+    table = inst.getTable(f"/{DEVICE_ID}/config")
     camera_id_pub = table.getStringTopic("camera_id").publish()
     res_w_pub = table.getIntegerTopic("camera_resolution_width").publish()
     res_h_pub = table.getIntegerTopic("camera_resolution_height").publish()
@@ -139,53 +114,17 @@ def setup_aruco(inst):
 
     obs_subs = []
     for i in range(NUM_CAMERAS):
-        cam_table = inst.getTable(f"/{ARUCO_DEVICE_ID}/output/camera_{i}")
+        cam_table = inst.getTable(f"/{DEVICE_ID}/output/camera_{i}")
         obs_subs.append(cam_table.getRawTopic("observation").subscribe(
             "dsv0_fb", bytes()))
 
-    pose_table = inst.getTable(f"/{ARUCO_DEVICE_ID}/poses")
+    pose_table = inst.getTable(f"/{DEVICE_ID}/poses")
     pose_pubs = [pose_table.getStringTopic(f"camera_{i}").publish() for i in range(NUM_CAMERAS)]
-    fps_sub = inst.getTable(f"/{ARUCO_DEVICE_ID}/output/camera_0").getIntegerTopic("fps").subscribe(0)
+    fps_sub = inst.getTable(f"/{DEVICE_ID}/output/camera_0").getIntegerTopic("fps").subscribe(0)
 
-    print(f"Published aruco config to /{ARUCO_DEVICE_ID}/config")
-
-    return publish_config, obs_subs, pose_pubs, fps_sub
-
-
-def setup_objdetect(inst):
-    table = inst.getTable(f"/{OBJDETECT_DEVICE_ID}/config")
-    camera_id_pub = table.getStringTopic("camera_id").publish()
-    res_w_pub = table.getIntegerTopic("camera_resolution_width").publish()
-    res_h_pub = table.getIntegerTopic("camera_resolution_height").publish()
-    exp_pub = table.getIntegerTopic("camera_exposure").publish()
-    gain_pub = table.getIntegerTopic("camera_gain").publish()
-
-    def publish_config():
-        camera_id_pub.set("/dev/video1")
-        res_w_pub.set(800)
-        res_h_pub.set(600)
-        exp_pub.set(100)
-        gain_pub.set(0)
-
-    publish_config()
-
-    det_table = inst.getTable(f"/{OBJDETECT_DEVICE_ID}/object_detection")
-    det_sub = det_table.getRawTopic("detections").subscribe(
-        "objectdetections_fb", bytes())
-
-    print(f"Published objdetect config to /{OBJDETECT_DEVICE_ID}/config")
-
-    return publish_config, det_sub
-
-
-if __name__ == "__main__":
-    inst = ntcore.NetworkTableInstance.getDefault()
-    inst.startServer()
-    print("NetworkTables server started (aruco + object detection)")
-
-    aruco_publish, obs_subs, pose_pubs, fps_sub = setup_aruco(inst)
-    objdetect_publish, det_sub = setup_objdetect(inst)
-
+    print(f"Published config to /{DEVICE_ID}/config")
+    print(f"Subscribing to {NUM_CAMERAS} camera outputs (flatbuffer)")
+    print(f"Republishing poses to /{DEVICE_ID}/poses/")
     print("Press Ctrl+C to stop\n")
 
     last_connections = 0
@@ -196,11 +135,9 @@ if __name__ == "__main__":
             print(f"Connections: {last_connections}")
             for c in connections:
                 print(f"  {c.remote_id} @ {c.remote_ip}")
-            aruco_publish()
-            objdetect_publish()
+            publish_config()
 
-        # Aruco results
-        any_aruco = False
+        any_detection = False
         for i in range(NUM_CAMERAS):
             buf = obs_subs[i].get()
             if not buf or len(buf) == 0:
@@ -209,22 +146,15 @@ if __name__ == "__main__":
 
             results = parse_frame(buf)
             if results and len(results) > 0 and results[0] is not None:
-                any_aruco = True
+                any_detection = True
                 s = format_result(results[0])
                 pose_pubs[i].set(s)
-                print(f"  aruco cam{i}: {s}")
+                print(f"  cam{i}: {s}")
             else:
                 pose_pubs[i].set("no detection")
 
-        if any_aruco:
-            print(f"  aruco fps: {fps_sub.get()}")
-
-        # Object detection results
-        buf = det_sub.get()
-        detections = parse_detection_frame(buf)
-        if detections:
-            print(f"  objdetect: {len(detections)} detection(s):")
-            for d in detections:
-                print(f"    {format_detection(d)}")
+        fps = fps_sub.get()
+        if any_detection:
+            print(f"  fps: {fps}")
 
         time.sleep(0.1)

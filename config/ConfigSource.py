@@ -1,10 +1,12 @@
 import json
+import os
 
 import cv2
 import ntcore
 import numpy
 
 from config.config import ConfigStore, RemoteConfig
+
 
 
 class ConfigSource:
@@ -26,6 +28,9 @@ class FileConfigSource(ConfigSource):
             config_store.local_config.server_ip = config_data["server_ip"]
             config_store.local_config.stream_port = config_data["stream_port"]
             config_store.local_config.num_cameras = config_data.get("num_cameras", 4)
+            config_store.local_config.detector_mode = config_data.get("detector_mode", "aruco")
+            config_store.local_config.objdetect_model_path = config_data.get("objdetect_model_path", "model.pt")
+            config_store.local_config.objdetect_calibration_file = config_data.get("objdetect_calibration_file", "calibration_objdetect.yml")
 
         # Load per-camera calibrations
         num_cameras = config_store.local_config.num_cameras
