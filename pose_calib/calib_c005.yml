@@ -1,0 +1,26 @@
+%YAML:1.0
+---
+calibration_time: "Sat Apr 11 16:35:52 2026"
+nr_of_frames: 8
+image_width: 800
+image_height: 600
+board_width: 12
+board_height: 9
+square_size: 30.
+# flags: +use_lu
+flags: 131072
+fisheye_model: 0
+camera_matrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 687.11546524918913, 0., 410.01080143236953, 0.,
+       686.39686161242776, 276.02028349423836, 0., 0., 1. ]
+distortion_coefficients: !!opencv-matrix
+   rows: 1
+   cols: 5
+   dt: d
+   data: [ 0.038717974594381921, -0.056614406544092083,
+       0.00030462412285852335, 0.00034265768299706034,
+       -0.0054743097960421152 ]
+avg_reprojection_error: 0.49319749950709257
