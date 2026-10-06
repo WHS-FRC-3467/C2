@@ -13,24 +13,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "schema"))
 from dsv0.Frame import Frame
 from dsv0.Vec3 import Vec3
 from dsv0.Quaternion import Quaternion
-from objectdetections.DetectionFrame import DetectionFrame
 
 ARUCO_DEVICE_ID = "dsv0"
 OBJDETECT_DEVICE_ID = "dsv1"
 NUM_CAMERAS = 4
 
 # Minimal tag layout with a single tag for testing
-TAG_LAYOUT = json.dumps({
-    "tags": [
-        {
-            "ID": 18,
-            "pose": {
-                "translation": {"x": 0.0, "y": 0.0, "z": 1.0},
-                "rotation": {"quaternion": {"W": 1.0, "X": 0.0, "Y": 0.0, "Z": 0.0}}
+TAG_LAYOUT = json.dumps(
+    {
+        "tags": [
+            {
+                "ID": 18,
+                "pose": {
+                    "translation": {"x": 0.0, "y": 0.0, "z": 1.0},
+                    "rotation": {
+                        "quaternion": {"W": 1.0, "X": 0.0, "Y": 0.0, "Z": 0.0}
+                    },
+                },
             }
-        }
-    ]
-})
+        ]
+    }
+)
 
 
 def parse_frame(buf):
@@ -41,6 +44,8 @@ def parse_frame(buf):
     results = []
     for i in range(frame.CamerasLength()):
         cam = frame.Cameras(i)
+
+        assert cam is not None
         cam_obs = cam.CameraObservation()
         if cam_obs is None:
             results.append(None)
@@ -52,9 +57,12 @@ def parse_frame(buf):
             continue
 
         v = Vec3()
-        sol.Pose().Translation(v)
+
+        sol_pose = sol.Pose()
+        assert sol_pose is not None
+        sol_pose.Translation(v)
         q = Quaternion()
-        sol.Pose().Rotation(q)
+        sol_pose.Rotation(q)
 
         tag_ids = [cam_obs.TagIds(j) for j in range(cam_obs.TagIdsLength())]
 
@@ -81,8 +89,12 @@ def format_result(r):
 
     t = r["translation"]
     q = r["rotation"]
-    yaw = math.degrees(math.atan2(2*(q["qw"]*q["qz"] + q["qx"]*q["qy"]),
-                                   1 - 2*(q["qy"]**2 + q["qz"]**2)))
+    yaw = math.degrees(
+        math.atan2(
+            2 * (q["qw"] * q["qz"] + q["qx"] * q["qy"]),
+            1 - 2 * (q["qy"] ** 2 + q["qz"] ** 2),
+        )
+    )
 
     s = f"tags={r['tag_ids']} X={t['x']:+.3f} Y={t['y']:+.3f} Z={t['z']:+.3f} yaw={yaw:+.1f}° err={r['error']:.4f}"
     if "alt_error" in r:
@@ -90,30 +102,12 @@ def format_result(r):
     return s
 
 
-def parse_detection_frame(buf):
-    if not buf or len(buf) == 0:
-        return None
-
-    frame = DetectionFrame.GetRootAs(buf, 0)
-    detections = []
-    for i in range(frame.DetectionsLength()):
-        det = frame.Detections(i)
-        detections.append({
-            "class_id": det.ClassId(),
-            "confidence": det.Confidence(),
-            "x0": det.X0(), "y0": det.Y0(),
-            "x1": det.X1(), "y1": det.Y1(),
-            "yaw": det.YawDeg(),
-            "pitch": det.PitchDeg(),
-            "area": det.AreaPx(),
-        })
-    return detections
-
-
 def format_detection(d):
-    return (f"cls={d['class_id']} conf={d['confidence']:.2f} "
-            f"[{d['x0']},{d['y0']}-{d['x1']},{d['y1']}] "
-            f"yaw={d['yaw']:+.1f}° pitch={d['pitch']:+.1f}° area={d['area']}")
+    return (
+        f"cls={d['class_id']} conf={d['confidence']:.2f} "
+        f"[{d['x0']},{d['y0']}-{d['x1']},{d['y1']}] "
+        f"yaw={d['yaw']:+.1f}° pitch={d['pitch']:+.1f}° area={d['area']}"
+    )
 
 
 def setup_aruco(inst):
@@ -140,12 +134,19 @@ def setup_aruco(inst):
     obs_subs = []
     for i in range(NUM_CAMERAS):
         cam_table = inst.getTable(f"/{ARUCO_DEVICE_ID}/output/camera_{i}")
-        obs_subs.append(cam_table.getRawTopic("observation").subscribe(
-            "dsv0_fb", bytes()))
+        obs_subs.append(
+            cam_table.getRawTopic("observation").subscribe("dsv0_fb", bytes())
+        )
 
     pose_table = inst.getTable(f"/{ARUCO_DEVICE_ID}/poses")
-    pose_pubs = [pose_table.getStringTopic(f"camera_{i}").publish() for i in range(NUM_CAMERAS)]
-    fps_sub = inst.getTable(f"/{ARUCO_DEVICE_ID}/output/camera_0").getIntegerTopic("fps").subscribe(0)
+    pose_pubs = [
+        pose_table.getStringTopic(f"camera_{i}").publish() for i in range(NUM_CAMERAS)
+    ]
+    fps_sub = (
+        inst.getTable(f"/{ARUCO_DEVICE_ID}/output/camera_0")
+        .getIntegerTopic("fps")
+        .subscribe(0)
+    )
 
     print(f"Published aruco config to /{ARUCO_DEVICE_ID}/config")
 
@@ -171,7 +172,8 @@ def setup_objdetect(inst):
 
     det_table = inst.getTable(f"/{OBJDETECT_DEVICE_ID}/object_detection")
     det_sub = det_table.getRawTopic("detections").subscribe(
-        "objectdetections_fb", bytes())
+        "objectdetections_fb", bytes()
+    )
 
     print(f"Published objdetect config to /{OBJDETECT_DEVICE_ID}/config")
 
@@ -218,13 +220,5 @@ if __name__ == "__main__":
 
         if any_aruco:
             print(f"  aruco fps: {fps_sub.get()}")
-
-        # Object detection results
-        buf = det_sub.get()
-        detections = parse_detection_frame(buf)
-        if detections:
-            print(f"  objdetect: {len(detections)} detection(s):")
-            for d in detections:
-                print(f"    {format_detection(d)}")
 
         time.sleep(0.1)

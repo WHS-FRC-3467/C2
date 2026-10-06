@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 import numpy.linalg as la
 
+
 def get_bounds(thresh, mask):
     MAX_OVERLAP = 0.9
     contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
@@ -24,13 +25,16 @@ def get_bounds(thresh, mask):
         aabb = cv2.boundingRect(contour)
 
         x, y, w, h = aabb
-        if mask is not None and (cv2.countNonZero(mask[y:y + h, x:x + w]) / (w * h) > MAX_OVERLAP):
+        if mask is not None and (
+            cv2.countNonZero(mask[y : y + h, x : x + w]) / (w * h) > MAX_OVERLAP
+        ):
             del contours[mx]  # remove from candidates
             continue
 
         return (aabb, contour)
 
     return None
+
 
 def make_distort_map(K, sz, dist, Knew):
     """
@@ -43,6 +47,7 @@ def make_distort_map(K, sz, dist, Knew):
 
     return dpts.reshape(sz[0], sz[1], 2).T
 
+
 def sparse_undistort_map(K, sz, dist, Knew, step=1):
     """
     same output as initUndistortRectifyMap, but sparse
@@ -50,10 +55,14 @@ def sparse_undistort_map(K, sz, dist, Knew, step=1):
     @return: distorted points, original points
     """
     zero = np.zeros(3)
-    pts = np.array(np.meshgrid(range(0, sz[0], step), range(0, sz[1], step))).T.reshape(-1, 1, 2)
+    pts = np.array(np.meshgrid(range(0, sz[0], step), range(0, sz[1], step))).T.reshape(
+        -1, 1, 2
+    )
 
     if step == 1:
-        dpts = cv2.initUndistortRectifyMap(K, dist, None, Knew, sz, cv2.CV_32FC2)[0].transpose(1, 0, 2)
+        dpts = cv2.initUndistortRectifyMap(K, dist, None, Knew, sz, cv2.CV_32FC2)[
+            0
+        ].transpose(1, 0, 2)
     else:
         pts3d = cv2.undistortPoints(pts.astype(np.float32), Knew, None)
         pts3d = cv2.convertPointsToHomogeneous(pts3d).reshape(-1, 3)
@@ -62,6 +71,7 @@ def sparse_undistort_map(K, sz, dist, Knew, step=1):
     shape = (sz[0] // step, sz[1] // step, 2)
 
     return dpts.reshape(-1, 2).reshape(shape), pts.reshape(shape)
+
 
 def get_diff_heatmap(img1, img2, colormap=True):
     """
@@ -75,6 +85,7 @@ def get_diff_heatmap(img1, img2, colormap=True):
         l2diff = cv2.applyColorMap(l2diff, cv2.COLORMAP_JET)
 
     return l2diff, l2diff.max()
+
 
 def loc_from_dist(pts, dpts, mask=None, lower=False, thres=1.0):
     """
@@ -107,7 +118,7 @@ def loc_from_dist(pts, dpts, mask=None, lower=False, thres=1.0):
         # ensure area is not 0
         if bounds[0][2] * bounds[0][3] == 0:
             bounds = None
-    
+
     if bounds is None:
         return None, None
 

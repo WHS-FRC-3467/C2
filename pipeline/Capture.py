@@ -3,7 +3,7 @@ import subprocess
 import sys
 import time
 from collections import deque
-from typing import Tuple
+from typing import Optional, Tuple
 
 import cv2
 import numpy
@@ -16,7 +16,7 @@ class Capture:
     def __init__(self) -> None:
         raise NotImplementedError
 
-    def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
+    def get_frame(self, config_store: ConfigStore) -> Optional[cv2.typing.MatLike]:
         """Return the next frame from the camera."""
         raise NotImplementedError
 
@@ -31,17 +31,25 @@ class Capture:
         remote_a = config_a.remote_config
         remote_b = config_b.remote_config
 
-        return remote_a.camera_id != remote_b.camera_id or remote_a.camera_resolution_width != remote_b.camera_resolution_width or remote_a.camera_resolution_height != remote_b.camera_resolution_height
+        return (
+            remote_a.camera_id != remote_b.camera_id
+            or remote_a.camera_resolution_width != remote_b.camera_resolution_width
+            or remote_a.camera_resolution_height != remote_b.camera_resolution_height
+        )
 
     @classmethod
     def _exposure_changed(cls, config_a: ConfigStore, config_b: ConfigStore) -> bool:
         if config_a == None or config_b == None:
             return True
-        return config_a.remote_config.camera_exposure != config_b.remote_config.camera_exposure or config_a.remote_config.camera_gain != config_b.remote_config.camera_gain
+        return (
+            config_a.remote_config.camera_exposure
+            != config_b.remote_config.camera_exposure
+            or config_a.remote_config.camera_gain != config_b.remote_config.camera_gain
+        )
 
 
 class DefaultCapture(Capture):
-    """"Read from camera with default OpenCV config."""
+    """ "Read from camera with default OpenCV config."""
 
     def __init__(self) -> None:
         pass
@@ -49,36 +57,46 @@ class DefaultCapture(Capture):
     _video = None
     _last_config: ConfigStore
 
-    def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
-        if self._video != None and self._config_changed(self._last_config, config_store):
+    def get_frame(self, config_store: ConfigStore) -> Optional[cv2.typing.MatLike]:
+        if self._video != None and self._config_changed(
+            self._last_config, config_store
+        ):
             print("Restarting capture session")
             self._video.release()
             self._video = None
 
         if self._video == None:
             if config_store.remote_config.camera_id == "":
-                return False, None
+                return None
             camera_id = config_store.remote_config.camera_id
             try:
                 camera_id = int(camera_id)
             except ValueError:
                 pass
             self._video = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
-            self._video.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-            self._video.set(cv2.CAP_PROP_FRAME_WIDTH, config_store.remote_config.camera_resolution_width)
-            self._video.set(cv2.CAP_PROP_FRAME_HEIGHT, config_store.remote_config.camera_resolution_height)
+            self._video.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"MJPG"))
+            self._video.set(
+                cv2.CAP_PROP_FRAME_WIDTH,
+                config_store.remote_config.camera_resolution_width,
+            )
+            self._video.set(
+                cv2.CAP_PROP_FRAME_HEIGHT,
+                config_store.remote_config.camera_resolution_height,
+            )
             self._video.set(cv2.CAP_PROP_FPS, 120)
-            self._video.set(cv2.CAP_PROP_EXPOSURE, config_store.remote_config.camera_exposure)
+            self._video.set(
+                cv2.CAP_PROP_EXPOSURE, config_store.remote_config.camera_exposure
+            )
             self._video.set(cv2.CAP_PROP_GAIN, config_store.remote_config.camera_gain)
 
         self._last_config = config_store
 
         retval, image = self._video.read()
-        return retval, image
+        return image if retval else None
 
 
 class GStreamerCapture(Capture):
-    """"Read from camera with GStreamer."""
+    """ "Read from camera with GStreamer."""
 
     def __init__(self) -> None:
         pass
@@ -86,8 +104,10 @@ class GStreamerCapture(Capture):
     _video = None
     _last_config: ConfigStore
 
-    def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
-        if self._video != None and self._config_changed(self._last_config, config_store):
+    def get_frame(self, config_store: ConfigStore) -> Optional[cv2.typing.MatLike]:
+        if self._video != None and self._config_changed(
+            self._last_config, config_store
+        ):
             print("Config changed, stopping capture session")
             self._video.release()
             self._video = None
@@ -98,12 +118,26 @@ class GStreamerCapture(Capture):
                 print("No camera ID, waiting to start capture session")
             else:
                 print("Starting capture session")
-                self._video = cv2.VideoCapture("v4l2src device=" + str(config_store.remote_config.camera_id) + " extra_controls=\"c,exposure_absolute=" + str(
-                    config_store.remote_config.camera_exposure) + ",gain=" + str(config_store.remote_config.camera_gain) + ",sharpness=0,brightness=0\" ! image/jpeg,format=MJPG,width=" + str(config_store.remote_config.camera_resolution_width) + ",height=" + str(config_store.remote_config.camera_resolution_height) + " ! jpegdec ! video/x-raw ! appsink drop=1", cv2.CAP_GSTREAMER)
+                self._video = cv2.VideoCapture(
+                    "v4l2src device="
+                    + str(config_store.remote_config.camera_id)
+                    + ' extra_controls="c,exposure_absolute='
+                    + str(config_store.remote_config.camera_exposure)
+                    + ",gain="
+                    + str(config_store.remote_config.camera_gain)
+                    + ',sharpness=0,brightness=0" ! image/jpeg,format=MJPG,width='
+                    + str(config_store.remote_config.camera_resolution_width)
+                    + ",height="
+                    + str(config_store.remote_config.camera_resolution_height)
+                    + " ! jpegdec ! video/x-raw ! appsink drop=1",
+                    cv2.CAP_GSTREAMER,
+                )
                 print("Capture session ready")
 
-        self._last_config = ConfigStore(dataclasses.replace(config_store.local_config),
-                                        dataclasses.replace(config_store.remote_config))
+        self._last_config = ConfigStore(
+            dataclasses.replace(config_store.local_config),
+            dataclasses.replace(config_store.remote_config),
+        )
 
         if self._video != None:
             retval, image = self._video.read()
@@ -112,9 +146,9 @@ class GStreamerCapture(Capture):
                 self._video.release()
                 self._video = None  # Force reconnect
                 sys.exit(1)
-            return retval, image
+            return image
         else:
-            return False, cv2.Mat(numpy.ndarray([]))
+            return None
 
 
 class MultiCameraCapture(Capture):
@@ -135,8 +169,12 @@ class MultiCameraCapture(Capture):
         self._needs_exposure_apply = False
         self._slow_frame_times: deque[float] = deque()
 
-    def get_frame(self, config_store: ConfigStore) -> Tuple[bool, cv2.Mat]:
-        if self._video is not None and self._config_changed(self._last_config, config_store):
+    def get_frame(self, config_store: ConfigStore) -> Optional[cv2.typing.MatLike]:
+        if (
+            self._video is not None
+            and self._last_config is not None
+            and self._config_changed(self._last_config, config_store)
+        ):
             print("Config changed, stopping capture session")
             self._video.release()
             self._video = None
@@ -147,9 +185,13 @@ class MultiCameraCapture(Capture):
                 print("No camera ID, waiting to start capture session")
             else:
                 num_cameras = config_store.local_config.num_cameras
-                total_width = config_store.remote_config.camera_resolution_width * num_cameras
+                total_width = (
+                    config_store.remote_config.camera_resolution_width * num_cameras
+                )
                 height = config_store.remote_config.camera_resolution_height
-                print(f"Starting multi-camera capture session ({num_cameras} cameras, {total_width}x{height})")
+                print(
+                    f"Starting multi-camera capture session ({num_cameras} cameras, {total_width}x{height})"
+                )
 
                 camera_id = config_store.remote_config.camera_id
                 try:
@@ -157,7 +199,7 @@ class MultiCameraCapture(Capture):
                 except ValueError:
                     pass
                 self._video = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
-                self._video.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'GREY'))
+                self._video.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"GREY"))
                 self._video.set(cv2.CAP_PROP_CONVERT_RGB, 0)
                 self._video.set(cv2.CAP_PROP_FRAME_WIDTH, total_width)
                 self._video.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
@@ -166,11 +208,17 @@ class MultiCameraCapture(Capture):
                 print("Multi-camera capture session ready")
 
         # Flag exposure update when NT values change
-        if self._video is not None and self._exposure_changed(self._last_config, config_store):
+        if (
+            self._video is not None
+            and self._last_config is not None
+            and self._exposure_changed(self._last_config, config_store)
+        ):
             self._needs_exposure_apply = True
 
-        self._last_config = ConfigStore(dataclasses.replace(config_store.local_config),
-                                        dataclasses.replace(config_store.remote_config))
+        self._last_config = ConfigStore(
+            dataclasses.replace(config_store.local_config),
+            dataclasses.replace(config_store.remote_config),
+        )
 
         if self._video is not None:
             t_start = time.monotonic()
@@ -188,10 +236,15 @@ class MultiCameraCapture(Capture):
             if elapsed > self.WATCHDOG_THRESHOLD_S:
                 self._slow_frame_times.append(now)
                 # Expire entries outside the window
-                while self._slow_frame_times and self._slow_frame_times[0] < now - self.WATCHDOG_WINDOW_S:
+                while (
+                    self._slow_frame_times
+                    and self._slow_frame_times[0] < now - self.WATCHDOG_WINDOW_S
+                ):
                     self._slow_frame_times.popleft()
                 count = len(self._slow_frame_times)
-                print(f"Watchdog: slow frame capture ({elapsed:.2f}s), count={count}/{self.WATCHDOG_MAX_SLOW_FRAMES} in last {self.WATCHDOG_WINDOW_S:.0f}s")
+                print(
+                    f"Watchdog: slow frame capture ({elapsed:.2f}s), count={count}/{self.WATCHDOG_MAX_SLOW_FRAMES} in last {self.WATCHDOG_WINDOW_S:.0f}s"
+                )
                 if count >= self.WATCHDOG_MAX_SLOW_FRAMES:
                     print("Watchdog: too many slow frames, exiting for restart")
                     self._video.release()
@@ -201,18 +254,23 @@ class MultiCameraCapture(Capture):
             if self._needs_exposure_apply:
                 self._needs_exposure_apply = False
                 device = str(config_store.remote_config.camera_id)
-                self._v4l2_set(device, "exposure", config_store.remote_config.camera_exposure)
-                self._v4l2_set(device, "analogue_gain", config_store.remote_config.camera_gain)
+                self._v4l2_set(
+                    device, "exposure", config_store.remote_config.camera_exposure
+                )
+                self._v4l2_set(
+                    device, "analogue_gain", config_store.remote_config.camera_gain
+                )
 
-            return retval, image
+            return image
         else:
-            return False, cv2.Mat(numpy.ndarray([]))
+            return None
 
     @staticmethod
     def _v4l2_set(device: str, ctrl: str, value: int) -> None:
         result = subprocess.run(
-            ['v4l2-ctl', '-d', device, '--set-ctrl', f'{ctrl}={value}'],
-            capture_output=True, text=True
+            ["v4l2-ctl", "-d", device, "--set-ctrl", f"{ctrl}={value}"],
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
             print(f"  v4l2-ctl ERROR setting {ctrl}={value}: {result.stderr.strip()}")
@@ -220,7 +278,7 @@ class MultiCameraCapture(Capture):
             print(f"  v4l2-ctl: {ctrl}={value}")
 
     @staticmethod
-    def split_frame(frame: cv2.Mat, num_cameras: int) -> list:
+    def split_frame(frame: cv2.typing.MatLike, num_cameras: int) -> list:
         """Split a wide combined frame into individual camera sub-frames.
 
         Returns numpy views into the original frame (zero-copy), so drawing
@@ -228,4 +286,6 @@ class MultiCameraCapture(Capture):
         """
         total_width = frame.shape[1]
         sub_width = total_width // num_cameras
-        return [frame[:, i * sub_width:(i + 1) * sub_width] for i in range(num_cameras)]
+        return [
+            frame[:, i * sub_width : (i + 1) * sub_width] for i in range(num_cameras)
+        ]

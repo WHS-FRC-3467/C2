@@ -9,7 +9,9 @@ from pipeline.FiducialDetector import FiducialDetector
 from vision_types import FiducialImageObservation
 
 # Path to the shared library relative to this file
-_LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "aruco_nano", "build", "libaruco_nano_capi.so")
+_LIB_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "aruco_nano", "build", "libaruco_nano_capi.so"
+)
 
 MAX_DETECTIONS = 64
 
@@ -51,7 +53,9 @@ class _ArucoNanoLib:
         self._lib.aruco_nano_destroy(handle)
 
     def detect(self, handle, data_ptr, width, height, stride, out_buf, max_det):
-        return self._lib.aruco_nano_detect(handle, data_ptr, width, height, stride, out_buf, max_det)
+        return self._lib.aruco_nano_detect(
+            handle, data_ptr, width, height, stride, out_buf, max_det
+        )
 
 
 _lib = _ArucoNanoLib()
@@ -69,30 +73,39 @@ class ArucoNanoFiducialDetector(FiducialDetector):
             _lib.destroy(self._handle)
             self._handle = None
 
-    def detect_fiducials(self, image: cv2.Mat, config_store: ConfigStore) -> List[FiducialImageObservation]:
+    def detect_fiducials(
+        self, image: cv2.typing.MatLike, config_store: ConfigStore
+    ) -> List[FiducialImageObservation]:
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
 
-        if not gray.flags['C_CONTIGUOUS']:
+        if not gray.flags["C_CONTIGUOUS"]:
             gray = numpy.ascontiguousarray(gray)
 
         height, width = gray.shape
         stride = gray.strides[0]
         data_ptr = gray.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
 
-        count = _lib.detect(self._handle, data_ptr, width, height, stride, self._det_buf, MAX_DETECTIONS)
+        count = _lib.detect(
+            self._handle, data_ptr, width, height, stride, self._det_buf, MAX_DETECTIONS
+        )
 
         observations = []
         for i in range(count):
             det = self._det_buf[i]
-            corners = numpy.array([[
-                [det.corners[0], det.corners[1]],
-                [det.corners[2], det.corners[3]],
-                [det.corners[4], det.corners[5]],
-                [det.corners[6], det.corners[7]],
-            ]], dtype=numpy.float64)
+            corners = numpy.array(
+                [
+                    [
+                        [det.corners[0], det.corners[1]],
+                        [det.corners[2], det.corners[3]],
+                        [det.corners[4], det.corners[5]],
+                        [det.corners[6], det.corners[7]],
+                    ]
+                ],
+                dtype=numpy.float64,
+            )
             observations.append(FiducialImageObservation(det.id, corners))
 
         return observations

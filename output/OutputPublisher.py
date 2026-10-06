@@ -1,7 +1,7 @@
 import math
 import sys
 import os
-from typing import List, Union
+from typing import List, SupportsFloat, SupportsIndex, Union
 
 import flatbuffers
 import ntcore
@@ -12,20 +12,45 @@ from vision_types import CameraPoseObservation
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "schema"))
 
 from dsv0.Pose3d import CreatePose3d
-from dsv0.PoseSolution import (PoseSolutionStart, PoseSolutionAddPose,
-                                     PoseSolutionAddError, PoseSolutionEnd)
-from dsv0.CameraObservation import (CameraObservationStart, CameraObservationAddSolution0,
-                                          CameraObservationAddSolution1, CameraObservationAddTagIds,
-                                          CameraObservationStartTagIdsVector, CameraObservationEnd)
-from dsv0.CameraOutput import (CameraOutputStart, CameraOutputAddTimestampUs,
-                                     CameraOutputAddCameraIndex, CameraOutputAddCameraObservation,
-                                     CameraOutputAddFps, CameraOutputEnd)
-from dsv0.Frame import (FrameStart, FrameAddTimestampUs, FrameAddCameras,
-                              FrameStartCamerasVector, FrameEnd)
+from dsv0.PoseSolution import (
+    PoseSolutionStart,
+    PoseSolutionAddPose,
+    PoseSolutionAddError,
+    PoseSolutionEnd,
+)
+from dsv0.CameraObservation import (
+    CameraObservationStart,
+    CameraObservationAddSolution0,
+    CameraObservationAddSolution1,
+    CameraObservationAddTagIds,
+    CameraObservationStartTagIdsVector,
+    CameraObservationEnd,
+)
+from dsv0.CameraOutput import (
+    CameraOutputStart,
+    CameraOutputAddTimestampUs,
+    CameraOutputAddCameraIndex,
+    CameraOutputAddCameraObservation,
+    CameraOutputAddFps,
+    CameraOutputEnd,
+)
+from dsv0.Frame import (
+    FrameStart,
+    FrameAddTimestampUs,
+    FrameAddCameras,
+    FrameStartCamerasVector,
+    FrameEnd,
+)
 
 
 class OutputPublisher:
-    def send(self, config_store: ConfigStore, timestamp: float, observation: Union[CameraPoseObservation, None], fps: Union[int, None] = None) -> None:
+    def send(
+        self,
+        config_store: ConfigStore,
+        timestamp: float,
+        observation: Union[CameraPoseObservation, None],
+        fps: Union[int, None] = None,
+    ) -> None:
         raise NotImplementedError
 
 
@@ -37,21 +62,35 @@ class NTOutputPublisher(OutputPublisher):
     def __init__(self, camera_index: int = -1) -> None:
         self._camera_index = camera_index
 
-    def send(self, config_store: ConfigStore, timestamp: float, observation: Union[CameraPoseObservation, None], fps: Union[int, None] = None) -> None:
+    def send(
+        self,
+        config_store: ConfigStore,
+        timestamp: float,
+        observation: Union[CameraPoseObservation, None],
+        fps: Union[int, None] = None,
+    ) -> None:
         if not self._init_complete:
             self._init_complete = True
             if self._camera_index >= 0:
-                table_path = "/" + config_store.local_config.device_id + "/output/camera_" + str(self._camera_index)
+                table_path = (
+                    "/"
+                    + config_store.local_config.device_id
+                    + "/output/camera_"
+                    + str(self._camera_index)
+                )
             else:
                 table_path = "/" + config_store.local_config.device_id + "/output"
             nt_table = ntcore.NetworkTableInstance.getDefault().getTable(table_path)
-            self._observations_pub = nt_table.getDoubleArrayTopic("observations").publish(
-                ntcore.PubSubOptions(periodic=0, sendAll=True, keepDuplicates=True))
+            self._observations_pub = nt_table.getDoubleArrayTopic(
+                "observations"
+            ).publish(
+                ntcore.PubSubOptions(periodic=0, sendAll=True, keepDuplicates=True)
+            )
             self._fps_pub = nt_table.getIntegerTopic("fps").publish()
 
         if fps is not None:
             self._fps_pub.set(fps)
-        observation_data: List[float] = [0]
+        observation_data: List[SupportsFloat | SupportsIndex] = [0.0]
         if observation is not None:
             observation_data[0] = 1
             observation_data.append(observation.error_0)
@@ -68,10 +107,18 @@ class NTOutputPublisher(OutputPublisher):
                 observation_data.append(observation.pose_1.translation().X())
                 observation_data.append(observation.pose_1.translation().Y())
                 observation_data.append(observation.pose_1.translation().Z())
-                observation_data.append(observation.pose_1.rotation().getQuaternion().W())
-                observation_data.append(observation.pose_1.rotation().getQuaternion().X())
-                observation_data.append(observation.pose_1.rotation().getQuaternion().Y())
-                observation_data.append(observation.pose_1.rotation().getQuaternion().Z())
+                observation_data.append(
+                    observation.pose_1.rotation().getQuaternion().W()
+                )
+                observation_data.append(
+                    observation.pose_1.rotation().getQuaternion().X()
+                )
+                observation_data.append(
+                    observation.pose_1.rotation().getQuaternion().Y()
+                )
+                observation_data.append(
+                    observation.pose_1.rotation().getQuaternion().Z()
+                )
             for tag_id in observation.tag_ids:
                 observation_data.append(tag_id)
         self._observations_pub.set(observation_data, math.floor(timestamp * 1000000))
@@ -98,17 +145,29 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
     def __init__(self, camera_index: int = -1) -> None:
         self._camera_index = camera_index
 
-    def send(self, config_store: ConfigStore, timestamp: float, observation: Union[CameraPoseObservation, None], fps: Union[int, None] = None) -> None:
+    def send(
+        self,
+        config_store: ConfigStore,
+        timestamp: float,
+        observation: Union[CameraPoseObservation, None],
+        fps: Union[int, None] = None,
+    ) -> None:
         if not self._init_complete:
             self._init_complete = True
             if self._camera_index >= 0:
-                table_path = "/" + config_store.local_config.device_id + "/output/camera_" + str(self._camera_index)
+                table_path = (
+                    "/"
+                    + config_store.local_config.device_id
+                    + "/output/camera_"
+                    + str(self._camera_index)
+                )
             else:
                 table_path = "/" + config_store.local_config.device_id + "/output"
             nt_table = ntcore.NetworkTableInstance.getDefault().getTable(table_path)
             self._frame_pub = nt_table.getRawTopic("observation").publish(
                 "dsv0_fb",
-                ntcore.PubSubOptions(periodic=0, sendAll=True, keepDuplicates=True))
+                ntcore.PubSubOptions(periodic=0, sendAll=True, keepDuplicates=True),
+            )
             self._fps_pub = nt_table.getIntegerTopic("fps").publish()
 
         if fps is not None:
@@ -121,10 +180,14 @@ class NTFlatbufferOutputPublisher(OutputPublisher):
         cam_obs_offset = None
         if observation is not None:
             # Build solutions
-            sol0 = _build_pose_solution(builder, observation.pose_0, observation.error_0)
+            sol0 = _build_pose_solution(
+                builder, observation.pose_0, observation.error_0
+            )
             sol1 = None
             if observation.pose_1 is not None and observation.error_1 is not None:
-                sol1 = _build_pose_solution(builder, observation.pose_1, observation.error_1)
+                sol1 = _build_pose_solution(
+                    builder, observation.pose_1, observation.error_1
+                )
 
             # Build tag_ids vector
             CameraObservationStartTagIdsVector(builder, len(observation.tag_ids))

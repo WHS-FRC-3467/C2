@@ -4,7 +4,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 
-
 class CalibrationUploadServer:
     """Simple web server for uploading calibration YAML files."""
 
@@ -102,8 +101,12 @@ class CalibrationUploadServer:
                 with open(filepath, "wb") as f:
                     f.write(file_data)
 
-                print(f"Calibration uploaded: {filename} ({len(file_data)} bytes), restarting...")
-                self._respond(200, f"Saved as {filename} ({len(file_data)} bytes). Restarting...")
+                print(
+                    f"Calibration uploaded: {filename} ({len(file_data)} bytes), restarting..."
+                )
+                self._respond(
+                    200, f"Saved as {filename} ({len(file_data)} bytes). Restarting..."
+                )
                 os._exit(0)
 
             def _respond(self, code, message):
@@ -123,7 +126,7 @@ class CalibrationUploadServer:
                         continue
                     header = part[:header_end].decode(errors="replace")
                     if f'name="{field_name}"' in header and "filename" not in header:
-                        value = part[header_end+4:]
+                        value = part[header_end + 4 :]
                         if value.endswith(b"\r\n"):
                             value = value[:-2]
                         return value.decode().strip()
@@ -137,7 +140,7 @@ class CalibrationUploadServer:
                         continue
                     header = part[:header_end].decode(errors="replace")
                     if f'name="{field_name}"' in header and "filename" in header:
-                        data = part[header_end+4:]
+                        data = part[header_end + 4 :]
                         if data.endswith(b"\r\n"):
                             data = data[:-2]
                         return data
@@ -153,4 +156,5 @@ class CalibrationUploadServer:
             server = ThreadingHTTPServer(("", self._port), self._make_handler())
             print(f"Calibration upload server at http://0.0.0.0:{self._port}")
             server.serve_forever()
+
         threading.Thread(target=run, daemon=True).start()

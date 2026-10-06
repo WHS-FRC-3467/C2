@@ -1,15 +1,14 @@
 from dataclasses import dataclass
 from typing import List, Union
 
-import numpy
-import numpy.typing
-from wpimath.geometry import *
+import cv2
+from wpimath.geometry import Pose3d
 
 
 @dataclass(frozen=True)
 class FiducialImageObservation:
     tag_id: int
-    corners: numpy.typing.NDArray[numpy.float64]
+    corners: cv2.typing.MatLike
 
 
 @dataclass(frozen=True)
@@ -19,18 +18,3 @@ class CameraPoseObservation:
     error_0: float
     pose_1: Union[Pose3d, None]
     error_1: Union[float, None]
-
-
-@dataclass(frozen=True)
-class ObjectDetectionObservation:
-    class_id: int
-    confidence: float
-    x0: int
-    y0: int
-    x1: int
-    y1: int
-    centroid_x: float
-    centroid_y: float
-    area_px: int
-    pitch_deg: float
-    yaw_deg: float

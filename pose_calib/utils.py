@@ -14,16 +14,26 @@ from cv2 import aruco
 import numpy as np
 import numpy.linalg as la
 
+
 class ChArucoDetector:
     def __init__(self, cfg):
         # configuration
-        self.board_sz = np.array([int(cfg.getNode("board_x").real()), int(cfg.getNode("board_y").real())])
+        self.board_sz = np.array(
+            [int(cfg.getNode("board_x").real()), int(cfg.getNode("board_y").real())]
+        )
         self.square_len = cfg.getNode("square_len").real()
-        self.ardict = aruco.getPredefinedDictionary(int(cfg.getNode("dictionary").real()))
+        self.ardict = aruco.getPredefinedDictionary(
+            int(cfg.getNode("dictionary").real())
+        )
 
         marker_len = cfg.getNode("marker_len").real()
-        self.board = aruco.CharucoBoard(self.board_sz, self.square_len, marker_len, self.ardict)
-        self.img_size = (int(cfg.getNode("image_width").real()), int(cfg.getNode("image_height").real()))
+        self.board = aruco.CharucoBoard(
+            self.board_sz, self.square_len, marker_len, self.ardict
+        )
+        self.img_size = (
+            int(cfg.getNode("image_width").real()),
+            int(cfg.getNode("image_height").real()),
+        )
 
         # per frame data
         self.N_pts = 0
@@ -45,7 +55,9 @@ class ChArucoDetector:
         self.cdist = calib.cdist
 
     def draw_axis(self, img):
-        cv2.drawFrameAxes(img, self.K, self.cdist, self.rvec, self.tvec, self.square_len)
+        cv2.drawFrameAxes(
+            img, self.K, self.cdist, self.rvec, self.tvec, self.square_len
+        )
 
     def detect_pts(self, img):
         detector = aruco.ArucoDetector(self.ardict)
@@ -59,7 +71,9 @@ class ChArucoDetector:
             self.last_cids = None
             return
 
-        res = aruco.interpolateCornersCharuco(self.corners, ids, img, self.board, minMarkers=self.pt_min_markers)
+        res = aruco.interpolateCornersCharuco(
+            self.corners, ids, img, self.board, minMarkers=self.pt_min_markers
+        )
         self.N_pts, self.ccorners, self.cids = res
 
         if self.N_pts == 0:
@@ -96,7 +110,9 @@ class ChArucoDetector:
 
         rvec = np.zeros((3, 1))
         tvec = np.zeros((3, 1))
-        self.pose_valid, rvec, tvec = aruco.estimatePoseCharucoBoard(self.ccorners, self.cids, self.board, self.K, self.cdist, rvec, tvec)
+        self.pose_valid, rvec, tvec = aruco.estimatePoseCharucoBoard(
+            self.ccorners, self.cids, self.board, self.K, self.cdist, rvec, tvec
+        )
 
         if not self.pose_valid:
             return
@@ -107,6 +123,7 @@ class ChArucoDetector:
         # print(cv2.RQDecomp3x3(cv2.Rodrigues(self.rvec)[0])[0])
         # print(self.tvec)
 
+
 class Calibrator:
     def __init__(self, img_size):
         self.img_size = img_size
@@ -116,7 +133,9 @@ class Calibrator:
 
         # initial K matrix
         # with aspect ratio of 1 and pp at center. Focal length is empirical.
-        self.Kin = cv2.getDefaultNewCameraMatrix(np.diag([1000, 1000, 1]), img_size, True)
+        self.Kin = cv2.getDefaultNewCameraMatrix(
+            np.diag([1000, 1000, 1]), img_size, True
+        )
         self.K = self.Kin.copy()
 
         self.cdist = None
@@ -141,7 +160,7 @@ class Calibrator:
         if not keyframes:
             keyframes = self.keyframes
 
-        assert(keyframes)
+        assert keyframes
 
         nkeyframes = len(keyframes)
 
@@ -168,43 +187,49 @@ class Calibrator:
         self.unknowns = self.nintr + 6 * nkeyframes
 
         pvar = np.diag(self.PCov)
-        self.mean_extr_var = mean_extr_var(pvar[self.nintr:])
+        self.mean_extr_var = mean_extr_var(pvar[self.nintr :])
 
-        self.disp_idx = index_of_dispersion(self.get_intrinsics(), np.diag(self.PCov)[:self.nintr])
+        self.disp_idx = index_of_dispersion(
+            self.get_intrinsics(), np.diag(self.PCov)[: self.nintr]
+        )
         return self.disp_idx
+
 
 def index_of_dispersion(mean, var):
     """
     computes index of dispersion:
     https://en.wikipedia.org/wiki/Index_of_dispersion
     """
-    return var / [abs(v) if abs(v) > 0 else 1. for v in mean]
+    return var / [abs(v) if abs(v) > 0 else 1.0 for v in mean]
+
 
 def mean_extr_var(var):
     """
     computes the mean of the extrinsic variances
     @param var: variance vector excluding the intrinsic parameters
     """
-    assert(len(var) % 6 == 0)
+    assert len(var) % 6 == 0
     nframes = len(var) // 6
     my_var = var[:6].copy()
 
     for i in range(1, nframes - 1):
-        my_var += var[6 * i:6 * (i + 1)]
+        my_var += var[6 * i : 6 * (i + 1)]
 
     return my_var / nframes
+
 
 def estimate_pt_std(res, d, n):
     """
     estimate the accuracy of point measurements given the reprojection error
-    @param res: the reprojection error 
+    @param res: the reprojection error
     """
     return res / np.sqrt(1 - d / (2 * n))
+
 
 def Jc2J(Jc, N_pts, nintr=9):
     """
     decompose a compact 'single view' jacobian into a sparse 'multi view' jacobian
-    @param Jc: compact single view jacobian 
+    @param Jc: compact single view jacobian
     @param N_pts: number of points per view
     @param nintr: number of intrinsic parameters
     """
@@ -216,10 +241,13 @@ def Jc2J(Jc, N_pts, nintr=9):
     i = 0
 
     for j, n in enumerate(N_pts):
-        J[2 * i:2 * i + 2 * n, nintr + 6 * j:nintr + 6 * (j + 1)] = Jc[2 * i:2 * i + 2 * n, :6]
+        J[2 * i : 2 * i + 2 * n, nintr + 6 * j : nintr + 6 * (j + 1)] = Jc[
+            2 * i : 2 * i + 2 * n, :6
+        ]
         i += n
 
     return J
+
 
 def compute_pose_var(rvecs, tvecs):
     ret = np.empty(6)
@@ -231,6 +259,7 @@ def compute_pose_var(rvecs, tvecs):
     ret[0:3] = np.var(reuler, axis=0)
     ret[3:6] = np.var(np.array(tvecs) / 10, axis=0).ravel()  # [mm]
     return ret
+
 
 def compute_state_cov(pts3d, rvecs, tvecs, K, cdist, flags):
     """
@@ -244,18 +273,19 @@ def compute_state_cov(pts3d, rvecs, tvecs, K, cdist, flags):
         R = cv2.Rodrigues(rvecs[i])[0]
         P_cam.extend([R.dot(P) + tvecs[i].ravel() for P in pts3d[i]])
 
-    zero = np.array([0, 0, 0.], dtype=np.float32)
+    zero = np.array([0, 0, 0.0], dtype=np.float32)
 
     # get jacobian
     Jc = cv2.projectPoints(np.array(P_cam), zero, zero, K, cdist)[1]
     J = Jc2J(Jc, N_pts)
     JtJ = J.T.dot(J)
-    
+
     if flags & (cv2.CALIB_FIX_K1 | cv2.CALIB_FIX_K2 | cv2.CALIB_FIX_K3):
-        # TODO: remove the according fixed rows so we can invert this 
+        # TODO: remove the according fixed rows so we can invert this
         return np.zeros_like(JtJ)
-    
+
     return la.inv(JtJ)
+
 
 def calibrateCamera(keyframes, img_size, flags, K):
     pts2d = []

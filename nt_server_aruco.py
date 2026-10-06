@@ -17,17 +17,21 @@ from dsv0.Quaternion import Quaternion
 DEVICE_ID = "dsv0"
 NUM_CAMERAS = 4
 
-TAG_LAYOUT = json.dumps({
-    "tags": [
-        {
-            "ID": 18,
-            "pose": {
-                "translation": {"x": 0.0, "y": 0.0, "z": 1.0},
-                "rotation": {"quaternion": {"W": 1.0, "X": 0.0, "Y": 0.0, "Z": 0.0}}
+TAG_LAYOUT = json.dumps(
+    {
+        "tags": [
+            {
+                "ID": 18,
+                "pose": {
+                    "translation": {"x": 0.0, "y": 0.0, "z": 1.0},
+                    "rotation": {
+                        "quaternion": {"W": 1.0, "X": 0.0, "Y": 0.0, "Z": 0.0}
+                    },
+                },
             }
-        }
-    ]
-})
+        ]
+    }
+)
 
 
 def parse_frame(buf):
@@ -38,6 +42,8 @@ def parse_frame(buf):
     results = []
     for i in range(frame.CamerasLength()):
         cam = frame.Cameras(i)
+
+        assert cam is not None
         cam_obs = cam.CameraObservation()
         if cam_obs is None:
             results.append(None)
@@ -49,9 +55,11 @@ def parse_frame(buf):
             continue
 
         v = Vec3()
-        sol.Pose().Translation(v)
+        sol_pose = sol.Pose()
+        assert sol_pose is not None
+        sol_pose.Translation(v)
         q = Quaternion()
-        sol.Pose().Rotation(q)
+        sol_pose.Rotation(q)
 
         tag_ids = [cam_obs.TagIds(j) for j in range(cam_obs.TagIdsLength())]
 
@@ -78,8 +86,12 @@ def format_result(r):
 
     t = r["translation"]
     q = r["rotation"]
-    yaw = math.degrees(math.atan2(2*(q["qw"]*q["qz"] + q["qx"]*q["qy"]),
-                                   1 - 2*(q["qy"]**2 + q["qz"]**2)))
+    yaw = math.degrees(
+        math.atan2(
+            2 * (q["qw"] * q["qz"] + q["qx"] * q["qy"]),
+            1 - 2 * (q["qy"] ** 2 + q["qz"] ** 2),
+        )
+    )
 
     s = f"tags={r['tag_ids']} X={t['x']:+.3f} Y={t['y']:+.3f} Z={t['z']:+.3f} yaw={yaw:+.1f}° err={r['error']:.4f}"
     if "alt_error" in r:
@@ -115,12 +127,19 @@ if __name__ == "__main__":
     obs_subs = []
     for i in range(NUM_CAMERAS):
         cam_table = inst.getTable(f"/{DEVICE_ID}/output/camera_{i}")
-        obs_subs.append(cam_table.getRawTopic("observation").subscribe(
-            "dsv0_fb", bytes()))
+        obs_subs.append(
+            cam_table.getRawTopic("observation").subscribe("dsv0_fb", bytes())
+        )
 
     pose_table = inst.getTable(f"/{DEVICE_ID}/poses")
-    pose_pubs = [pose_table.getStringTopic(f"camera_{i}").publish() for i in range(NUM_CAMERAS)]
-    fps_sub = inst.getTable(f"/{DEVICE_ID}/output/camera_0").getIntegerTopic("fps").subscribe(0)
+    pose_pubs = [
+        pose_table.getStringTopic(f"camera_{i}").publish() for i in range(NUM_CAMERAS)
+    ]
+    fps_sub = (
+        inst.getTable(f"/{DEVICE_ID}/output/camera_0")
+        .getIntegerTopic("fps")
+        .subscribe(0)
+    )
 
     print(f"Published config to /{DEVICE_ID}/config")
     print(f"Subscribing to {NUM_CAMERAS} camera outputs (flatbuffer)")

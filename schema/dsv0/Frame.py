@@ -4,11 +4,13 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
+
 
 # Top-level message containing results from all cameras in a single frame
 class Frame(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -21,6 +23,7 @@ class Frame(object):
     def GetRootAsFrame(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
+
     # Frame
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
@@ -42,6 +45,7 @@ class Frame(object):
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
             from dsv0.CameraOutput import CameraOutput
+
             obj = CameraOutput()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -59,32 +63,44 @@ class Frame(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         return o == 0
 
+
 def FrameStart(builder):
     builder.StartObject(2)
+
 
 def Start(builder):
     FrameStart(builder)
 
+
 def FrameAddTimestampUs(builder, timestampUs):
     builder.PrependInt64Slot(0, timestampUs, 0)
+
 
 def AddTimestampUs(builder, timestampUs):
     FrameAddTimestampUs(builder, timestampUs)
 
+
 def FrameAddCameras(builder, cameras):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(cameras), 0)
+    builder.PrependUOffsetTRelativeSlot(
+        1, flatbuffers.number_types.UOffsetTFlags.py_type(cameras), 0
+    )
+
 
 def AddCameras(builder, cameras):
     FrameAddCameras(builder, cameras)
 
+
 def FrameStartCamerasVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
+
 
 def StartCamerasVector(builder, numElems):
     return FrameStartCamerasVector(builder, numElems)
 
+
 def FrameEnd(builder):
     return builder.EndObject()
+
 
 def End(builder):
     return FrameEnd(builder)

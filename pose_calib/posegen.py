@@ -13,6 +13,7 @@ import cv2
 
 from distvis import sparse_undistort_map, loc_from_dist
 
+
 def gen_bin(s, e):
     """
     generate values in range by binary subdivision
@@ -27,6 +28,7 @@ def gen_bin(s, e):
         lst.append((t, e))
         yield t
 
+
 def unproject(p, K, cdist, Z):
     """
     project pixel back to a 3D coordinate at depth Z
@@ -34,17 +36,18 @@ def unproject(p, K, cdist, Z):
     p = cv2.undistortPoints(p.reshape(-1, 1, 2), K, cdist).ravel()
     return np.array([p[0], p[1], 1]) * Z
 
+
 def oribital_pose(bbox, rx, ry, Z, rz=0):
     """
-    @param bbox: object bounding box. note: assumes planar object with virtual Z dimension. 
+    @param bbox: object bounding box. note: assumes planar object with virtual Z dimension.
     @param rx: rotation around x axis in rad
     @param ry: rotation around y axis in rad
     @param Z: distance to camera in board lengths
-    @return: rvec, tvec 
+    @return: rvec, tvec
     """
-    Rz = cv2.Rodrigues(np.array([0., 0., rz]))[0]
-    Rx = cv2.Rodrigues(np.array([np.pi + rx, 0., 0.]))[0]  # flip by 180° so Z is up
-    Ry = cv2.Rodrigues(np.array([0., ry, 0.]))[0]
+    Rz = cv2.Rodrigues(np.array([0.0, 0.0, rz]))[0]
+    Rx = cv2.Rodrigues(np.array([np.pi + rx, 0.0, 0.0]))[0]  # flip by 180° so Z is up
+    Ry = cv2.Rodrigues(np.array([0.0, ry, 0.0]))[0]
 
     R = np.eye(4)
     R[:3, :3] = (Ry).dot(Rx).dot(Rz)
@@ -62,6 +65,7 @@ def oribital_pose(bbox, rx, ry, Z, rz=0):
 
     return cv2.Rodrigues(Rf[:3, :3])[0].ravel(), Rf[3, :3]
 
+
 def pose_planar_fullscreen(K, cdist, img_size, bbox):
     KB = K.dot([bbox[0], bbox[1], 0])  # ignore principal point
     Z = (KB[0:2] / img_size).min()
@@ -72,6 +76,7 @@ def pose_planar_fullscreen(K, cdist, img_size, bbox):
     p = np.array([img_size[0] / 2 - pB[0] / 2, img_size[1] / 2 + pB[1] / 2])
     t = unproject(p, K, cdist, Z)
     return r, t
+
 
 def pose_from_bounds(src_ext, tgt_rect, K, cdist, img_sz):
     rot90 = tgt_rect[3] > tgt_rect[2]
@@ -107,7 +112,7 @@ def pose_from_bounds(src_ext, tgt_rect, K, cdist, img_sz):
     # org is bl
     if rot90:
         R = cv2.Rodrigues(r)[0]
-        Rz = cv2.Rodrigues(np.array([0., 0., -np.pi / 2]))[0]
+        Rz = cv2.Rodrigues(np.array([0.0, 0.0, -np.pi / 2]))[0]
         R = R.dot(Rz)
         r = cv2.Rodrigues(R)[0].ravel()
         # org is tl
@@ -128,10 +133,12 @@ def pose_from_bounds(src_ext, tgt_rect, K, cdist, img_sz):
 
     return r, t, tgt_rect
 
+
 class PoseGeneratorDist:
     """
     generate poses based on min/ max distortion
     """
+
     SUBSAMPLE = 20
 
     def __init__(self, img_size):
@@ -145,8 +152,14 @@ class PoseGeneratorDist:
         # valid poses:
         # r_x, r_y -> -70° .. 70°
         self.orbital = (
-            gen_bin(np.array([-(70 / 180) * np.pi, 0, self.orbitalZ, rz]), np.array([(70 / 180) * np.pi, 0, self.orbitalZ, rz])),
-            gen_bin(np.array([0, -(70 / 180) * np.pi, self.orbitalZ, rz]), np.array([0, (70 / 180) * np.pi, self.orbitalZ, rz]))
+            gen_bin(
+                np.array([-(70 / 180) * np.pi, 0, self.orbitalZ, rz]),
+                np.array([(70 / 180) * np.pi, 0, self.orbitalZ, rz]),
+            ),
+            gen_bin(
+                np.array([0, -(70 / 180) * np.pi, self.orbitalZ, rz]),
+                np.array([0, (70 / 180) * np.pi, self.orbitalZ, rz]),
+            ),
         )
 
         self.mask = np.zeros(np.array(img_size) // self.SUBSAMPLE, dtype=np.uint8).T
@@ -171,7 +184,7 @@ class PoseGeneratorDist:
         if tgt_param < 4:
             # orbital pose is used for focal length
             axis = (tgt_param + 1) % 2  # f_y -> r_x
-            
+
             self.stats[0] += 1
             r, t = oribital_pose(bbox, *next(self.orbital[axis]))
 
@@ -188,17 +201,17 @@ class PoseGeneratorDist:
         dpts, pts = self.compute_distortion(K, cdist, self.SUBSAMPLE)
 
         bounds = loc_from_dist(pts, dpts, mask=self.mask)[0]
-        
+
         if bounds is None:
             # FIXME: anything else?
             print("loc_from_dist failed. return orbital pose instead of crashing")
             return self.get_pose(bbox, nk, 3, K, cdist)
-        
+
         self.stats[1] += 1
-        r, t, nbounds = pose_from_bounds(bbox, bounds * self.SUBSAMPLE, K, cdist, self.img_size)
+        r, t, nbounds = pose_from_bounds(
+            bbox, bounds * self.SUBSAMPLE, K, cdist, self.img_size
+        )
         x, y, w, h = np.ceil(np.array(nbounds) / self.SUBSAMPLE).astype(int)
-        self.mask[y:y + h, x:x + w] = 1
+        self.mask[y : y + h, x : x + w] = 1
 
         return r, t
-
-

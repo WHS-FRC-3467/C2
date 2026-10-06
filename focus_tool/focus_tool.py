@@ -23,17 +23,19 @@ class MJPEGCapture:
         while self._running:
             try:
                 resp = requests.get(self._url, stream=True, timeout=5)
-                buf = b''
+                buf = b""
                 for chunk in resp.iter_content(chunk_size=4096):
                     if not self._running:
                         break
                     buf += chunk
-                    start = buf.find(b'\xff\xd8')
-                    end = buf.find(b'\xff\xd9')
+                    start = buf.find(b"\xff\xd8")
+                    end = buf.find(b"\xff\xd9")
                     if start != -1 and end != -1 and end > start:
-                        jpg = buf[start:end + 2]
-                        buf = buf[end + 2:]
-                        frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                        jpg = buf[start : end + 2]
+                        buf = buf[end + 2 :]
+                        frame = cv2.imdecode(
+                            np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR
+                        )
                         if frame is not None:
                             with self._lock:
                                 self._frame = frame
@@ -63,7 +65,7 @@ def region_sharpness(gray, rows, cols):
     values = np.zeros((rows, cols))
     for r in range(rows):
         for c in range(cols):
-            roi = gray[r * rh:(r + 1) * rh, c * rw:(c + 1) * rw]
+            roi = gray[r * rh : (r + 1) * rh, c * rw : (c + 1) * rw]
             values[r, c] = laplacian_variance(roi)
     return values, rh, rw
 
@@ -105,7 +107,7 @@ def main():
     history = deque(maxlen=100)
     GRID_ROWS, GRID_COLS = 3, 4
     ZOOM_SIZE = 200  # half-size of crop region in original pixels
-    ZOOM_SCALE = 2   # magnification factor
+    ZOOM_SCALE = 2  # magnification factor
     zoom_center = None  # (x, y) or None
 
     def on_mouse(event, x, y, flags, param):
@@ -127,7 +129,9 @@ def main():
         history.append(sharpness)
 
         # Use 95th percentile of recent history as "best" to ignore outlier spikes
-        best_sharpness = np.percentile(list(history), 95) if len(history) >= 5 else sharpness
+        best_sharpness = (
+            np.percentile(list(history), 95) if len(history) >= 5 else sharpness
+        )
         best_sharpness = max(best_sharpness, 1.0)
         pct = min(sharpness / best_sharpness * 100, 100.0)
 
@@ -156,10 +160,18 @@ def main():
                 ty = cy + text_sz[1] // 2
 
                 # Background for readability
-                cv2.putText(frame, label, (tx + 1, ty + 1),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
-                cv2.putText(frame, label, (tx, ty),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                cv2.putText(
+                    frame,
+                    label,
+                    (tx + 1, ty + 1),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 0, 0),
+                    3,
+                )
+                cv2.putText(
+                    frame, label, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2
+                )
 
         # Draw overall sharpness + slider at top
         frame_h, frame_w = frame.shape[:2]
@@ -169,21 +181,46 @@ def main():
         slider_w = frame_w - 20
 
         # Semi-transparent background for top bar area
-        overlay = frame[0:bar_y + bar_h + 45, :].copy()
+        overlay = frame[0 : bar_y + bar_h + 45, :].copy()
         cv2.rectangle(overlay, (0, 0), (frame_w, bar_y + bar_h + 45), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.5, frame[0:bar_y + bar_h + 45, :], 0.5, 0, frame[0:bar_y + bar_h + 45, :])
+        cv2.addWeighted(
+            overlay,
+            0.5,
+            frame[0 : bar_y + bar_h + 45, :],
+            0.5,
+            0,
+            frame[0 : bar_y + bar_h + 45, :],
+        )
 
         draw_slider(frame, pct, bar_margin, bar_y, slider_w, bar_h)
 
         # Text below slider
         text_y = bar_y + bar_h + 20
         status = "GOOD" if pct > 90 else "OK" if pct > 70 else "POOR"
-        status_color = (0, 255, 0) if pct > 90 else (0, 255, 255) if pct > 70 else (0, 0, 255)
+        status_color = (
+            (0, 255, 0) if pct > 90 else (0, 255, 255) if pct > 70 else (0, 0, 255)
+        )
 
-        cv2.putText(frame, "Focus: {:.0f}  Best: {:.0f}  ({:.0f}%)".format(sharpness, best_sharpness, pct),
-                    (bar_margin, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-        cv2.putText(frame, status, (frame_w - 100, text_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
+        cv2.putText(
+            frame,
+            "Focus: {:.0f}  Best: {:.0f}  ({:.0f}%)".format(
+                sharpness, best_sharpness, pct
+            ),
+            (bar_margin, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            2,
+        )
+        cv2.putText(
+            frame,
+            status,
+            (frame_w - 100, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            status_color,
+            2,
+        )
 
         # Draw zoom region indicator on main frame
         if zoom_center is not None:
@@ -196,14 +233,24 @@ def main():
 
             # Extract crop from the raw frame (before HUD was drawn) and zoom in
             crop = frame[y1:y2, x1:x2]
-            zoomed = cv2.resize(crop, (crop.shape[1] * ZOOM_SCALE, crop.shape[0] * ZOOM_SCALE),
-                                interpolation=cv2.INTER_LINEAR)
+            zoomed = cv2.resize(
+                crop,
+                (crop.shape[1] * ZOOM_SCALE, crop.shape[0] * ZOOM_SCALE),
+                interpolation=cv2.INTER_LINEAR,
+            )
 
             # Show sharpness of the zoomed region
             zoom_gray = gray[y1:y2, x1:x2]
             zoom_sharp = laplacian_variance(zoom_gray)
-            cv2.putText(zoomed, "Sharpness: {:.0f}".format(zoom_sharp), (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.putText(
+                zoomed,
+                "Sharpness: {:.0f}".format(zoom_sharp),
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 255),
+                2,
+            )
 
             cv2.imshow("Zoom", zoomed)
 
@@ -211,7 +258,7 @@ def main():
         k = cv2.waitKey(1)
         if k == 27:
             break
-        elif k == ord('z'):
+        elif k == ord("z"):
             zoom_center = None
             cv2.destroyWindow("Zoom")
 

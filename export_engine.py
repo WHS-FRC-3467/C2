@@ -2,7 +2,9 @@ import tensorrt as trt
 
 logger = trt.Logger(trt.Logger.WARNING)
 builder = trt.Builder(logger)
-network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+network = builder.create_network(
+    1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+)
 parser = trt.OnnxParser(network, logger)
 
 with open("model.onnx", "rb") as f:

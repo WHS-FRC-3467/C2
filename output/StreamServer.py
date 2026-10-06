@@ -37,7 +37,9 @@ class MjpegServer(StreamServer):
                     self.wfile.write(self.HTML)
                 elif self.path == "/stream":
                     self.send_response(200)
-                    self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                    self.send_header(
+                        "Content-Type", "multipart/x-mixed-replace; boundary=frame"
+                    )
                     self.end_headers()
                     encode_params = [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
                     try:
@@ -46,18 +48,21 @@ class MjpegServer(StreamServer):
                                 frame = self_mjpeg._frame
                             if frame is None:
                                 import time
+
                                 time.sleep(0.01)
                                 continue
-                            ret, jpeg = cv2.imencode('.jpg', frame, encode_params)
+                            ret, jpeg = cv2.imencode(".jpg", frame, encode_params)
                             if not ret:
                                 continue
                             data = jpeg.tobytes()
-                            self.wfile.write(b'--frame\r\n')
-                            self.wfile.write(b'Content-Type: image/jpeg\r\n')
-                            self.wfile.write(f'Content-Length: {len(data)}\r\n'.encode())
-                            self.wfile.write(b'\r\n')
+                            self.wfile.write(b"--frame\r\n")
+                            self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                            self.wfile.write(
+                                f"Content-Length: {len(data)}\r\n".encode()
+                            )
+                            self.wfile.write(b"\r\n")
                             self.wfile.write(data)
-                            self.wfile.write(b'\r\n')
+                            self.wfile.write(b"\r\n")
                     except BrokenPipeError:
                         return
                 else:
@@ -74,9 +79,11 @@ class MjpegServer(StreamServer):
         server.serve_forever()
 
     def start(self, config_store: ConfigStore) -> None:
-        threading.Thread(target=self._run, daemon=True, args=(config_store.local_config.stream_port,)).start()
+        threading.Thread(
+            target=self._run, daemon=True, args=(config_store.local_config.stream_port,)
+        ).start()
 
-    def set_frame(self, frame: cv2.Mat) -> None:
+    def set_frame(self, frame: cv2.typing.MatLike) -> None:
         with self._lock:
             self._frame = frame.copy()
 
@@ -112,7 +119,9 @@ class RawCameraMjpegServer:
                     self.wfile.write(self.HTML)
                 elif self.path == "/stream":
                     self.send_response(200)
-                    self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                    self.send_header(
+                        "Content-Type", "multipart/x-mixed-replace; boundary=frame"
+                    )
                     self.end_headers()
                     encode_params = [cv2.IMWRITE_JPEG_QUALITY, RAW_JPEG_QUALITY]
                     with self_raw._client_count_lock:
@@ -123,18 +132,21 @@ class RawCameraMjpegServer:
                                 frame = self_raw._frame
                             if frame is None:
                                 import time
+
                                 time.sleep(0.01)
                                 continue
-                            ret, jpeg = cv2.imencode('.jpg', frame, encode_params)
+                            ret, jpeg = cv2.imencode(".jpg", frame, encode_params)
                             if not ret:
                                 continue
                             data = jpeg.tobytes()
-                            self.wfile.write(b'--frame\r\n')
-                            self.wfile.write(b'Content-Type: image/jpeg\r\n')
-                            self.wfile.write(f'Content-Length: {len(data)}\r\n'.encode())
-                            self.wfile.write(b'\r\n')
+                            self.wfile.write(b"--frame\r\n")
+                            self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                            self.wfile.write(
+                                f"Content-Length: {len(data)}\r\n".encode()
+                            )
+                            self.wfile.write(b"\r\n")
                             self.wfile.write(data)
-                            self.wfile.write(b'\r\n')
+                            self.wfile.write(b"\r\n")
                     except BrokenPipeError:
                         pass
                     finally:
@@ -153,9 +165,10 @@ class RawCameraMjpegServer:
         def run():
             server = ThreadingHTTPServer(("", port), self._make_handler())
             server.serve_forever()
+
         threading.Thread(target=run, daemon=True).start()
 
-    def set_frame(self, frame: cv2.Mat) -> None:
+    def set_frame(self, frame: cv2.typing.MatLike) -> None:
         if not self.has_clients:
             return
         with self._lock:
