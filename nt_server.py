@@ -15,7 +15,6 @@ from dsv0.Vec3 import Vec3
 from dsv0.Quaternion import Quaternion
 
 ARUCO_DEVICE_ID = "dsv0"
-OBJDETECT_DEVICE_ID = "dsv1"
 NUM_CAMERAS = 4
 
 # Minimal tag layout with a single tag for testing
@@ -153,40 +152,12 @@ def setup_aruco(inst):
     return publish_config, obs_subs, pose_pubs, fps_sub
 
 
-def setup_objdetect(inst):
-    table = inst.getTable(f"/{OBJDETECT_DEVICE_ID}/config")
-    camera_id_pub = table.getStringTopic("camera_id").publish()
-    res_w_pub = table.getIntegerTopic("camera_resolution_width").publish()
-    res_h_pub = table.getIntegerTopic("camera_resolution_height").publish()
-    exp_pub = table.getIntegerTopic("camera_exposure").publish()
-    gain_pub = table.getIntegerTopic("camera_gain").publish()
-
-    def publish_config():
-        camera_id_pub.set("/dev/video1")
-        res_w_pub.set(800)
-        res_h_pub.set(600)
-        exp_pub.set(100)
-        gain_pub.set(0)
-
-    publish_config()
-
-    det_table = inst.getTable(f"/{OBJDETECT_DEVICE_ID}/object_detection")
-    det_sub = det_table.getRawTopic("detections").subscribe(
-        "objectdetections_fb", bytes()
-    )
-
-    print(f"Published objdetect config to /{OBJDETECT_DEVICE_ID}/config")
-
-    return publish_config, det_sub
-
-
 if __name__ == "__main__":
     inst = ntcore.NetworkTableInstance.getDefault()
     inst.startServer()
     print("NetworkTables server started (aruco + object detection)")
 
     aruco_publish, obs_subs, pose_pubs, fps_sub = setup_aruco(inst)
-    objdetect_publish, det_sub = setup_objdetect(inst)
 
     print("Press Ctrl+C to stop\n")
 
@@ -199,7 +170,6 @@ if __name__ == "__main__":
             for c in connections:
                 print(f"  {c.remote_id} @ {c.remote_ip}")
             aruco_publish()
-            objdetect_publish()
 
         # Aruco results
         any_aruco = False

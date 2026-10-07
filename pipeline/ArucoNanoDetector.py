@@ -4,7 +4,7 @@ from typing import List
 
 import cv2
 import numpy
-from config.config import ConfigStore
+from config.Config import ConfigStore
 from pipeline.FiducialDetector import FiducialDetector
 from vision_types import FiducialImageObservation
 

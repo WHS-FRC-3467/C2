@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy
-from config.config import ConfigStore
+from config.Config import ConfigStore
 
 
 class Capture:

@@ -5,7 +5,7 @@ from typing import List, SupportsFloat, SupportsIndex, Union
 
 import flatbuffers
 import ntcore
-from config.config import ConfigStore
+from config.Config import ConfigStore
 from vision_types import CameraPoseObservation
 
 # Add schema to path for generated flatbuffer modules

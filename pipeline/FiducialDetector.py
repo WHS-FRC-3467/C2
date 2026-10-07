@@ -1,7 +1,7 @@
 from typing import List
 
 import cv2
-from config.config import ConfigStore
+from config.Config import ConfigStore
 from vision_types import FiducialImageObservation
 
 

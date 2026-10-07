@@ -5,7 +5,7 @@ import cv2
 import numpy
 import ntcore
 
-from config.config import ConfigStore, LocalConfig, RemoteConfig
+from config.Config import ConfigStore, LocalConfig, RemoteConfig
 from config.ConfigSource import ConfigSource, FileConfigSource, NTConfigSource
 from output.OutputPublisher import NTFlatbufferOutputPublisher, OutputPublisher
 from output.OverlayUtil import *

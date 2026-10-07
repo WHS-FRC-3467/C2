@@ -24,9 +24,6 @@ class LocalConfig:
     camera_matrices: List = field(default_factory=list)
     distortion_coefficients_list: List = field(default_factory=list)
     has_calibrations: List[bool] = field(default_factory=list)
-    # Object detection config
-    objdetect_model_path: str = "model.engine"
-    objdetect_calibration_file: str = "calibration_objdetect.yml"
 
 
 @dataclass
