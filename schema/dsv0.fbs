@@ -50,7 +50,7 @@ table PerCameraResults {
 /// Combined camera results; field-to-robot
 table CombinedResults {
   /// Field-relative robot pose observation (null if no tags seen)
-  camera_observation: CameraObservation;
+  robot_observation: CameraObservation;
   /// Frames per second (0 if not reported this cycle)
   fps: int32;
 }

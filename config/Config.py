@@ -24,7 +24,8 @@ class LocalConfig:
 class RemoteConfig:
     camera_exposure: int = 0
     camera_gain: int = 0
-    camera_extrinsics: list[Pose3d] = []
+    # Pose of each camera expressed in robot coordinates, in camera index order.
+    camera_extrinsics: list[Pose3d] = field(default_factory=list)
     fiducial_size_m: float = 0
     tag_layout: Any = None
 

@@ -27,7 +27,7 @@ class CombinedResults(object):
 
     # Field-relative robot pose observation (null if no tags seen)
     # CombinedResults
-    def CameraObservation(self):
+    def RobotObservation(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
@@ -48,9 +48,9 @@ class CombinedResults(object):
 def CombinedResultsStart(builder): builder.StartObject(2)
 def Start(builder):
     return CombinedResultsStart(builder)
-def CombinedResultsAddCameraObservation(builder, cameraObservation): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(cameraObservation), 0)
-def AddCameraObservation(builder, cameraObservation):
-    return CombinedResultsAddCameraObservation(builder, cameraObservation)
+def CombinedResultsAddRobotObservation(builder, robotObservation): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(robotObservation), 0)
+def AddRobotObservation(builder, robotObservation):
+    return CombinedResultsAddRobotObservation(builder, robotObservation)
 def CombinedResultsAddFps(builder, fps): builder.PrependInt32Slot(1, fps, 0)
 def AddFps(builder, fps):
     return CombinedResultsAddFps(builder, fps)

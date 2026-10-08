@@ -40,6 +40,9 @@ def _run_aruco(config, remote_config_source):
     frame_count = 0
     last_print = 0
     was_calibrating = False
+    # Carry the last robot estimate forward as one starting guess for the next
+    # frame. The current frame's detections still determine the new result.
+    previous_robot_pose = None
     while True:
         remote_config_source.update(config)
         timestamp = time.time()
@@ -84,7 +87,6 @@ def _run_aruco(config, remote_config_source):
             all_detections = [f.result() for f in detect_futures]
             t_det = time.perf_counter()
 
-            camera_pose_observations = []
             for cam_idx in range(num_cameras):
                 raw_camera_servers[cam_idx].set_frame(sub_frames[cam_idx])
 
@@ -94,14 +96,19 @@ def _run_aruco(config, remote_config_source):
                 ]
                 [overlay_image_observation(display_sub, x) for x in image_observations]
 
-                camera_pose_observations.append(camera_pose_estimator.solve_camera_pose(
-                    cam_idx, image_observations, config
-                ))
+
+            # Estimate one robot pose from the corners in all synchronized
+            # subframes, rather than solving and publishing one pose per camera.
+            robot_pose_observation = camera_pose_estimator.solve_robot_pose(
+                all_detections, config, previous_robot_pose
+            )
+            if robot_pose_observation is not None:
+                previous_robot_pose = robot_pose_observation.pose_0
 
             output_publisher.send(
                 config,
                 timestamp,
-                camera_pose_observations,
+                robot_pose_observation,
                 fps,
             )
             t_pose = time.perf_counter()
