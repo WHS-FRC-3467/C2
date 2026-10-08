@@ -7,12 +7,12 @@ import ntcore
 
 from config.Config import ConfigStore, LocalConfig, RemoteConfig
 from config.ConfigSource import ConfigSource, FileConfigSource, NTConfigSource
-from output.OutputPublisher import NTFlatbufferOutputPublisher, OutputPublisher
+from output.OutputPublisher import NTFlatbufferOutputPublisher
 from output.OverlayUtil import *
 from output.CalibrationUploadServer import CalibrationUploadServer
 from output.StreamServer import MjpegServer, RawCameraMjpegServer
 from pipeline.CameraPoseEstimator import MultiTargetCameraPoseEstimator
-from pipeline.Capture import DefaultCapture, MultiCameraCapture
+from pipeline.Capture import MultiCameraCapture
 from pipeline.ArucoNanoDetector import ArucoNanoFiducialDetector
 
 
@@ -25,7 +25,7 @@ def _run_aruco(config, remote_config_source):
         for _ in range(num_cameras)
     ]
     camera_pose_estimator = MultiTargetCameraPoseEstimator()
-    output_publishers = [NTFlatbufferOutputPublisher(i) for i in range(num_cameras)]
+    output_publisher = NTFlatbufferOutputPublisher()
     stream_server = MjpegServer()
     raw_camera_servers = [RawCameraMjpegServer(i) for i in range(num_cameras)]
     detection_pool = ThreadPoolExecutor(max_workers=num_cameras)
@@ -68,7 +68,7 @@ def _run_aruco(config, remote_config_source):
 
             detect_futures = [
                 detection_pool.submit(
-                    fiducial_detectors[i].detect_fiducials, sub_frames[i], config
+                    fiducial_detectors[i].detect_fiducials, sub_frames[i]
                 )
                 for i in range(num_cameras)
             ]
@@ -84,11 +84,8 @@ def _run_aruco(config, remote_config_source):
             all_detections = [f.result() for f in detect_futures]
             t_det = time.perf_counter()
 
+            camera_pose_observations = []
             for cam_idx in range(num_cameras):
-                cam_config = config.for_camera(cam_idx)
-                if not cam_config.local_config.has_calibration:
-                    continue
-
                 raw_camera_servers[cam_idx].set_frame(sub_frames[cam_idx])
 
                 image_observations = all_detections[cam_idx]
@@ -97,16 +94,16 @@ def _run_aruco(config, remote_config_source):
                 ]
                 [overlay_image_observation(display_sub, x) for x in image_observations]
 
-                camera_pose_observation = camera_pose_estimator.solve_camera_pose(
-                    image_observations, cam_config
-                )
+                camera_pose_observations.append(camera_pose_estimator.solve_camera_pose(
+                    cam_idx, image_observations, config
+                ))
 
-                output_publishers[cam_idx].send(
-                    cam_config,
-                    timestamp,
-                    camera_pose_observation,
-                    fps if cam_idx == 0 else None,
-                )
+            output_publisher.send(
+                config,
+                timestamp,
+                camera_pose_observations,
+                fps,
+            )
             t_pose = time.perf_counter()
 
             stream_server.set_frame(display_image)

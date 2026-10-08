@@ -8,25 +8,10 @@ from vision_types import CameraPoseObservation, FiducialImageObservation
 
 from pipeline.CoordinateSystems import openCvPoseToWpilib, wpilibTranslationToOpenCv
 
-
-class CameraPoseEstimator:
-    def __init__(self) -> None:
-        raise NotImplementedError
-
+class MultiTargetCameraPoseEstimator:
     def solve_camera_pose(
         self,
-        image_observations: List[FiducialImageObservation],
-        config_store: ConfigStore,
-    ) -> Union[CameraPoseObservation, None]:
-        raise NotImplementedError
-
-
-class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
-    def __init__(self) -> None:
-        pass
-
-    def solve_camera_pose(
-        self,
+        camera_index: int,
         image_observations: List[FiducialImageObservation],
         config_store: ConfigStore,
     ) -> Union[CameraPoseObservation, None]:
@@ -110,8 +95,8 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
                 _, rvecs, tvecs, errors = cv2.solvePnPGeneric(
                     object_points,
                     numpy.array(image_points),
-                    config_store.local_config.camera_matrix,
-                    config_store.local_config.distortion_coefficients,
+                    config_store.local_config.camera_matrices[camera_index],
+                    config_store.local_config.distortion_coefficients[camera_index],
                     flags=cv2.SOLVEPNP_IPPE_SQUARE,
                 )
             except:
@@ -152,8 +137,8 @@ class MultiTargetCameraPoseEstimator(CameraPoseEstimator):
                 _, rvecs, tvecs, errors = cv2.solvePnPGeneric(
                     numpy.array(object_points),
                     numpy.array(image_points),
-                    config_store.local_config.camera_matrix,
-                    config_store.local_config.distortion_coefficients,
+                    config_store.local_config.camera_matrices[camera_index],
+                    config_store.local_config.distortion_coefficients[camera_index],
                     flags=cv2.SOLVEPNP_SQPNP,
                 )
             except:

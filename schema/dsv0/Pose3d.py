@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class Pose3d(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def SizeOf(cls):
@@ -30,16 +28,7 @@ class Pose3d(object):
         return obj
 
 
-def CreatePose3d(
-    builder,
-    translation_x,
-    translation_y,
-    translation_z,
-    rotation_w,
-    rotation_x,
-    rotation_y,
-    rotation_z,
-):
+def CreatePose3d(builder, translation_x, translation_y, translation_z, rotation_w, rotation_x, rotation_y, rotation_z):
     builder.Prep(8, 56)
     builder.Prep(8, 32)
     builder.PrependFloat64(rotation_z)

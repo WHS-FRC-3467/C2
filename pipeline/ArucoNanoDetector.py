@@ -5,7 +5,6 @@ from typing import List
 import cv2
 import numpy
 from config.Config import ConfigStore
-from pipeline.FiducialDetector import FiducialDetector
 from vision_types import FiducialImageObservation
 
 # Path to the shared library relative to this file
@@ -61,7 +60,7 @@ class _ArucoNanoLib:
 _lib = _ArucoNanoLib()
 
 
-class ArucoNanoFiducialDetector(FiducialDetector):
+class ArucoNanoFiducialDetector:
     """AprilTag detector using the aruco_nano C++ library via ctypes."""
 
     def __init__(self, dictionary_id: int) -> None:
@@ -74,7 +73,7 @@ class ArucoNanoFiducialDetector(FiducialDetector):
             self._handle = None
 
     def detect_fiducials(
-        self, image: cv2.typing.MatLike, config_store: ConfigStore
+        self, image: cv2.typing.MatLike
     ) -> List[FiducialImageObservation]:
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

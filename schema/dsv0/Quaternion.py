@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class Quaternion(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def SizeOf(cls):
@@ -20,33 +18,13 @@ class Quaternion(object):
         self._tab = flatbuffers.table.Table(buf, pos)
 
     # Quaternion
-    def W(self):
-        return self._tab.Get(
-            flatbuffers.number_types.Float64Flags,
-            self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(0),
-        )
-
+    def W(self): return self._tab.Get(flatbuffers.number_types.Float64Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(0))
     # Quaternion
-    def X(self):
-        return self._tab.Get(
-            flatbuffers.number_types.Float64Flags,
-            self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(8),
-        )
-
+    def X(self): return self._tab.Get(flatbuffers.number_types.Float64Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(8))
     # Quaternion
-    def Y(self):
-        return self._tab.Get(
-            flatbuffers.number_types.Float64Flags,
-            self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(16),
-        )
-
+    def Y(self): return self._tab.Get(flatbuffers.number_types.Float64Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(16))
     # Quaternion
-    def Z(self):
-        return self._tab.Get(
-            flatbuffers.number_types.Float64Flags,
-            self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(24),
-        )
-
+    def Z(self): return self._tab.Get(flatbuffers.number_types.Float64Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(24))
 
 def CreateQuaternion(builder, w, x, y, z):
     builder.Prep(8, 32)

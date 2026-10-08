@@ -4,6 +4,7 @@ import os
 import cv2
 import ntcore
 import numpy
+from wpimath.geometry import Pose3d
 
 from config.Config import ConfigStore, RemoteConfig
 
@@ -28,15 +29,11 @@ class FileConfigSource(ConfigSource):
             config_store.local_config.server_ip = config_data["server_ip"]
             config_store.local_config.stream_port = config_data["stream_port"]
             config_store.local_config.num_cameras = config_data.get("num_cameras", 4)
-            config_store.local_config.detector_mode = config_data.get(
-                "detector_mode", "aruco"
-            )
 
         # Load per-camera calibrations
         num_cameras = config_store.local_config.num_cameras
         config_store.local_config.camera_matrices = []
-        config_store.local_config.distortion_coefficients_list = []
-        config_store.local_config.has_calibrations = []
+        config_store.local_config.distortion_coefficients = []
 
         for i in range(num_cameras):
             filename = self.calibration_filename(i)
@@ -52,30 +49,21 @@ class FileConfigSource(ConfigSource):
                 and type(distortion_coefficients) == numpy.ndarray
             ):
                 config_store.local_config.camera_matrices.append(camera_matrix)
-                config_store.local_config.distortion_coefficients_list.append(
+                config_store.local_config.distortion_coefficients.append(
                     distortion_coefficients
                 )
-                config_store.local_config.has_calibrations.append(True)
             else:
                 config_store.local_config.camera_matrices.append(numpy.array([]))
-                config_store.local_config.distortion_coefficients_list.append(
+                config_store.local_config.distortion_coefficients.append(
                     numpy.array([])
                 )
-                config_store.local_config.has_calibrations.append(False)
-
-        # Legacy: has_calibration is True if any camera is calibrated
-        config_store.local_config.has_calibration = any(
-            config_store.local_config.has_calibrations
-        )
 
 
 class NTConfigSource(ConfigSource):
     _init_complete: bool = False
-    _camera_id_sub: ntcore.StringSubscriber
-    _camera_resolution_width_sub: ntcore.IntegerSubscriber
-    _camera_resolution_height_sub: ntcore.IntegerSubscriber
     _camera_exposure_sub: ntcore.IntegerSubscriber
     _camera_gain_sub: ntcore.IntegerSubscriber
+    _camera_extrinsics_sub: ntcore.StructArraySubscriber
     _fiducial_size_m_sub: ntcore.DoubleSubscriber
     _tag_layout_sub: ntcore.StringSubscriber
 
@@ -85,37 +73,22 @@ class NTConfigSource(ConfigSource):
             nt_table = ntcore.NetworkTableInstance.getDefault().getTable(
                 "/" + config_store.local_config.device_id + "/config"
             )
-            self._camera_id_sub = nt_table.getStringTopic("camera_id").subscribe(
-                RemoteConfig.camera_id
-            )
-            self._camera_resolution_width_sub = nt_table.getIntegerTopic(
-                "camera_resolution_width"
-            ).subscribe(RemoteConfig.camera_resolution_width)
-            self._camera_resolution_height_sub = nt_table.getIntegerTopic(
-                "camera_resolution_height"
-            ).subscribe(RemoteConfig.camera_resolution_height)
             self._camera_exposure_sub = nt_table.getIntegerTopic(
                 "camera_exposure"
             ).subscribe(RemoteConfig.camera_exposure)
             self._camera_gain_sub = nt_table.getIntegerTopic("camera_gain").subscribe(
                 RemoteConfig.camera_gain
             )
+            self._camera_extrinsics_sub = nt_table.getStructArrayTopic("camera_extrinsics", Pose3d).subscribe(RemoteConfig.camera_extrinsics)
             self._fiducial_size_m_sub = nt_table.getDoubleTopic(
                 "fiducial_size_m"
             ).subscribe(RemoteConfig.fiducial_size_m)
             self._tag_layout_sub = nt_table.getStringTopic("tag_layout").subscribe("")
             self._init_complete = True
 
-        # Read config data
-        config_store.remote_config.camera_id = self._camera_id_sub.get()
-        config_store.remote_config.camera_resolution_width = (
-            self._camera_resolution_width_sub.get()
-        )
-        config_store.remote_config.camera_resolution_height = (
-            self._camera_resolution_height_sub.get()
-        )
         config_store.remote_config.camera_exposure = self._camera_exposure_sub.get()
         config_store.remote_config.camera_gain = self._camera_gain_sub.get()
+        config_store.remote_config.camera_extrinsics = self._camera_extrinsics_sub.get()
         config_store.remote_config.fiducial_size_m = self._fiducial_size_m_sub.get()
         try:
             config_store.remote_config.tag_layout = json.loads(

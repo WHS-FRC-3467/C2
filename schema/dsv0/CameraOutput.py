@@ -4,12 +4,11 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
+# Results from one camera; field-to-camera
 class CameraOutput(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -22,23 +21,14 @@ class CameraOutput(object):
     def GetRootAsCameraOutput(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
-
     # CameraOutput
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
-    # Microsecond timestamp (matches NT timestamp convention)
-    # CameraOutput
-    def TimestampUs(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
-        if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Int64Flags, o + self._tab.Pos)
-        return 0
-
     # Camera index within the multi-camera module
     # CameraOutput
     def CameraIndex(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
         return 0
@@ -46,11 +36,10 @@ class CameraOutput(object):
     # Field-relative camera pose observation (null if no tags seen)
     # CameraOutput
     def CameraObservation(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from dsv0.CameraObservation import CameraObservation
-
             obj = CameraObservation()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -59,57 +48,23 @@ class CameraOutput(object):
     # Frames per second (0 if not reported this cycle)
     # CameraOutput
     def Fps(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
         return 0
 
-
-def CameraOutputStart(builder):
-    builder.StartObject(4)
-
-
+def CameraOutputStart(builder): builder.StartObject(3)
 def Start(builder):
-    CameraOutputStart(builder)
-
-
-def CameraOutputAddTimestampUs(builder, timestampUs):
-    builder.PrependInt64Slot(0, timestampUs, 0)
-
-
-def AddTimestampUs(builder, timestampUs):
-    CameraOutputAddTimestampUs(builder, timestampUs)
-
-
-def CameraOutputAddCameraIndex(builder, cameraIndex):
-    builder.PrependInt32Slot(1, cameraIndex, 0)
-
-
+    return CameraOutputStart(builder)
+def CameraOutputAddCameraIndex(builder, cameraIndex): builder.PrependInt32Slot(0, cameraIndex, 0)
 def AddCameraIndex(builder, cameraIndex):
-    CameraOutputAddCameraIndex(builder, cameraIndex)
-
-
-def CameraOutputAddCameraObservation(builder, cameraObservation):
-    builder.PrependUOffsetTRelativeSlot(
-        2, flatbuffers.number_types.UOffsetTFlags.py_type(cameraObservation), 0
-    )
-
-
+    return CameraOutputAddCameraIndex(builder, cameraIndex)
+def CameraOutputAddCameraObservation(builder, cameraObservation): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(cameraObservation), 0)
 def AddCameraObservation(builder, cameraObservation):
-    CameraOutputAddCameraObservation(builder, cameraObservation)
-
-
-def CameraOutputAddFps(builder, fps):
-    builder.PrependInt32Slot(3, fps, 0)
-
-
+    return CameraOutputAddCameraObservation(builder, cameraObservation)
+def CameraOutputAddFps(builder, fps): builder.PrependInt32Slot(2, fps, 0)
 def AddFps(builder, fps):
-    CameraOutputAddFps(builder, fps)
-
-
-def CameraOutputEnd(builder):
-    return builder.EndObject()
-
-
+    return CameraOutputAddFps(builder, fps)
+def CameraOutputEnd(builder): return builder.EndObject()
 def End(builder):
     return CameraOutputEnd(builder)
