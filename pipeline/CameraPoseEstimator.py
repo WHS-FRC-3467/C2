@@ -4,8 +4,8 @@ import cv2
 import numpy
 from scipy.optimize import least_squares
 from wpimath.geometry import Pose3d, Quaternion, Rotation3d, Transform3d, Translation3d
-from config.Config import ConfigStore
-from vision_types import CameraPoseObservation, FiducialImageObservation
+from input.Config import ConfigStore
+from pipeline.VisionTypes import CameraPoseObservation, FiducialImageObservation
 
 from pipeline.CoordinateSystems import openCvPoseToWpilib, wpilibTranslationToOpenCv
 
@@ -55,6 +55,102 @@ def _pose_from_matrix(matrix: numpy.ndarray) -> Pose3d:
     )
 
 class MultiTargetCameraPoseEstimator:
+    def project_tag_corners_by_camera(
+        self, robot_pose: Optional[Pose3d], config_store: ConfigStore
+    ) -> List[dict[int, numpy.ndarray]]:
+        """Project known field-tag corners into each camera for ROI detection."""
+        local = config_store.local_config
+        remote = config_store.remote_config
+        camera_count = local.num_cameras
+        projected_by_camera: List[dict[int, numpy.ndarray]] = [
+            {} for _ in range(camera_count)
+        ]
+        if (
+            robot_pose is None
+            or not remote.tag_layout
+            or remote.fiducial_size_m <= 0
+        ):
+            return projected_by_camera
+
+        field_from_robot = _pose_matrix(robot_pose)
+        corner_offsets = numpy.asarray(
+            [
+                (0, remote.fiducial_size_m / 2.0, -remote.fiducial_size_m / 2.0),
+                (0, -remote.fiducial_size_m / 2.0, -remote.fiducial_size_m / 2.0),
+                (0, -remote.fiducial_size_m / 2.0, remote.fiducial_size_m / 2.0),
+                (0, remote.fiducial_size_m / 2.0, remote.fiducial_size_m / 2.0),
+            ],
+            dtype=numpy.float64,
+        )
+
+        tag_data_by_id = {
+            tag_data["ID"]: tag_data for tag_data in remote.tag_layout.get("tags", [])
+        }
+        for camera_index in range(
+            min(
+                camera_count,
+                len(remote.camera_extrinsics),
+                len(local.camera_matrices),
+                len(local.distortion_coefficients),
+            )
+        ):
+            camera_matrix = numpy.asarray(local.camera_matrices[camera_index])
+            distortion = numpy.asarray(local.distortion_coefficients[camera_index])
+            if camera_matrix.size == 0 or distortion.size == 0:
+                continue
+
+            robot_from_camera = _pose_matrix(remote.camera_extrinsics[camera_index])
+            field_from_camera_rotation = (
+                field_from_robot[:3, :3] @ robot_from_camera[:3, :3]
+            )
+            field_from_camera_translation = (
+                field_from_robot[:3, 3]
+                + field_from_robot[:3, :3] @ robot_from_camera[:3, 3]
+            )
+
+            for tag_id, tag_data in tag_data_by_id.items():
+                pose_data = tag_data["pose"]
+                rotation_data = pose_data["rotation"]["quaternion"]
+                tag_pose = Pose3d(
+                    Translation3d(
+                        pose_data["translation"]["x"],
+                        pose_data["translation"]["y"],
+                        pose_data["translation"]["z"],
+                    ),
+                    Rotation3d(
+                        Quaternion(
+                            rotation_data["W"],
+                            rotation_data["X"],
+                            rotation_data["Y"],
+                            rotation_data["Z"],
+                        )
+                    ),
+                )
+                field_from_tag = _pose_matrix(tag_pose)
+                field_points = (
+                    corner_offsets @ field_from_tag[:3, :3].T
+                    + field_from_tag[:3, 3]
+                )
+
+                # Row-vector form of transforming field points into the
+                # camera, then converting WPILib axes to OpenCV camera axes.
+                camera_points_wp = (
+                    field_points - field_from_camera_translation
+                ) @ field_from_camera_rotation
+                camera_points_cv = camera_points_wp @ _WPILIB_TO_OPENCV.T
+                if numpy.any(camera_points_cv[:, 2] <= 1e-6):
+                    continue
+                pixels, _ = cv2.projectPoints(
+                    camera_points_cv.reshape(-1, 1, 3),
+                    numpy.zeros((3, 1)),
+                    numpy.zeros((3, 1)),
+                    camera_matrix,
+                    distortion,
+                )
+                projected_by_camera[camera_index][tag_id] = pixels.reshape(4, 2)
+
+        return projected_by_camera
+
     def solve_robot_pose(
         self,
         observations_by_camera: List[List[FiducialImageObservation]],

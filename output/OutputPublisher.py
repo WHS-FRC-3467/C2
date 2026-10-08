@@ -5,8 +5,8 @@ from typing import Optional, Union
 
 import flatbuffers
 import ntcore
-from config.Config import ConfigStore
-from vision_types import CameraPoseObservation
+from input.Config import ConfigStore
+from pipeline.VisionTypes import CameraPoseObservation
 
 # Add schema to path for generated flatbuffer modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "schema"))
@@ -90,7 +90,7 @@ class NTFlatbufferOutputPublisher:
     def send(
         self,
         config_store: ConfigStore,
-        timestamp: float,
+        timestamp: int,
         observation: Optional[CameraPoseObservation],
         fps: Union[int, None] = None,
     ) -> None:
@@ -107,7 +107,6 @@ class NTFlatbufferOutputPublisher:
         if fps is not None:
             self._fps_pub.set(fps)
 
-        timestamp_us = math.floor(timestamp * 1000000)
         builder = flatbuffers.Builder(256)
 
         robot_observation = (
@@ -131,4 +130,4 @@ class NTFlatbufferOutputPublisher:
         builder.Finish(frame)
         buf = builder.Output()
 
-        self._frame_pub.set(bytes(buf), timestamp_us)
+        self._frame_pub.set(bytes(buf), timestamp)

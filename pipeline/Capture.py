@@ -6,8 +6,8 @@ from collections import deque
 from typing import Optional, Tuple
 
 import cv2
-import numpy
-from config.Config import ConfigStore
+import ntcore
+from input.Config import ConfigStore
 
 
 class Capture:
@@ -16,7 +16,7 @@ class Capture:
     def __init__(self) -> None:
         raise NotImplementedError
 
-    def get_frame(self, config_store: ConfigStore) -> Optional[cv2.typing.MatLike]:
+    def get_frame(self, config_store: ConfigStore) -> Optional[tuple[cv2.typing.MatLike, int]]:
         """Return the next frame from the camera."""
         raise NotImplementedError
 
@@ -49,7 +49,7 @@ class MultiCameraCapture(Capture):
         self._needs_exposure_apply = False
         self._slow_frame_times: deque[float] = deque()
 
-    def get_frame(self, config_store: ConfigStore) -> Optional[cv2.typing.MatLike]:
+    def get_frame(self, config_store: ConfigStore) -> Optional[tuple[cv2.typing.MatLike, int]]:
         if self._video is None:
             if config_store.local_config.camera_id == "":
                 print("No camera ID, waiting to start capture session")
@@ -93,6 +93,7 @@ class MultiCameraCapture(Capture):
         if self._video is not None:
             t_start = time.monotonic()
             retval, image = self._video.read()
+            timestamp = ntcore._now()
             elapsed = time.monotonic() - t_start
 
             if not retval:
@@ -131,7 +132,7 @@ class MultiCameraCapture(Capture):
                     device, "analogue_gain", config_store.remote_config.camera_gain
                 )
 
-            return image
+            return image, timestamp
         else:
             return None
 

@@ -6,7 +6,7 @@ import ntcore
 import numpy
 from wpimath.geometry import Pose3d
 
-from config.Config import ConfigStore, RemoteConfig
+from input.Config import ConfigStore, RemoteConfig
 
 
 class ConfigSource:
@@ -29,6 +29,13 @@ class FileConfigSource(ConfigSource):
             config_store.local_config.server_ip = config_data["server_ip"]
             config_store.local_config.stream_port = config_data["stream_port"]
             config_store.local_config.num_cameras = config_data.get("num_cameras", 4)
+            config_store.local_config.camera_id = str(config_data["camera_id"])
+            config_store.local_config.camera_resolution_width = config_data[
+                "camera_resolution_width"
+            ]
+            config_store.local_config.camera_resolution_height = config_data[
+                "camera_resolution_height"
+            ]
 
         # Load per-camera calibrations
         num_cameras = config_store.local_config.num_cameras
@@ -79,7 +86,7 @@ class NTConfigSource(ConfigSource):
             self._camera_gain_sub = nt_table.getIntegerTopic("camera_gain").subscribe(
                 RemoteConfig.camera_gain
             )
-            self._camera_extrinsics_sub = nt_table.getStructArrayTopic("camera_extrinsics", Pose3d).subscribe(RemoteConfig.camera_extrinsics)
+            self._camera_extrinsics_sub = nt_table.getStructArrayTopic("camera_extrinsics", Pose3d).subscribe([])
             self._fiducial_size_m_sub = nt_table.getDoubleTopic(
                 "fiducial_size_m"
             ).subscribe(RemoteConfig.fiducial_size_m)

@@ -2,6 +2,6 @@
     "python.analysis.extraPaths": [
         "./schema"
     ],
-    "cmake.sourceDirectory": "./aruco_nano",
+    "cmake.sourceDirectory": "/home/cj/Documents/C2/aruco_nano",
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
 }

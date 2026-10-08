@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 
 import cv2
 
-from config.Config import ConfigStore
+from input.Config import ConfigStore
 
 JPEG_QUALITY = 80
 RAW_JPEG_QUALITY = 95
