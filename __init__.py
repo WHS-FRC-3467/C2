@@ -10,7 +10,7 @@ from wpimath.geometry import Pose3d
 
 from input.Config import ConfigStore, LocalConfig, RemoteConfig
 from input.ConfigSource import ConfigSource, FileConfigSource, NTConfigSource
-from input.RobotPoseSource import NTRobotPoseSource, TimestampedPose
+from input.RobotPoseSource import NTFeedbackSource, TimestampedPose
 from output.OutputPublisher import NTFlatbufferOutputPublisher
 from output.OverlayUtil import *
 from output.CalibrationUploadServer import CalibrationUploadServer
@@ -30,7 +30,7 @@ def _run_aruco(config, remote_config_source):
     ]
     camera_pose_estimator = MultiTargetCameraPoseEstimator()
     output_publisher = NTFlatbufferOutputPublisher()
-    robot_pose_source = NTRobotPoseSource(config)
+    robot_pose_source = NTFeedbackSource(config)
     stream_server = MjpegServer()
     raw_camera_servers = [RawCameraMjpegServer(i) for i in range(num_cameras)]
     detection_pool = ThreadPoolExecutor(max_workers=num_cameras)

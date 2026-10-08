@@ -12,17 +12,17 @@ class TimestampedPose:
     timestamp_us: int
 
 
-class RobotPoseSource:
+class FeedbackSource:
     def get_pose(self) -> Optional[TimestampedPose]:
         raise NotImplementedError
 
 
-class NTRobotPoseSource(RobotPoseSource):
+class NTFeedbackSource(FeedbackSource):
     _pose_sub: ntcore.StructSubscriber
 
     def __init__(self, config: ConfigStore) -> None:
         nt_table = ntcore.NetworkTableInstance.getDefault().getTable(
-                                "/" + config.local_config.device_id + "/Pose"
+                                "/" + config.local_config.device_id + "/Feedback"
                             )
         self._pose_sub = nt_table.getStructTopic("Pose", Pose3d).subscribe(None)
 
