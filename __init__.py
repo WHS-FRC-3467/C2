@@ -45,7 +45,7 @@ def _run_aruco(config, remote_config_source):
     previous_robot_pose = None
     while True:
         remote_config_source.update(config)
-        timestamp = time.time()
+        timestamp = time.monotonic()
         t_cap0 = time.perf_counter()
         image = capture.get_frame(config)
         t_cap1 = time.perf_counter()
