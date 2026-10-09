@@ -184,8 +184,13 @@ class MultiTargetCameraPoseEstimator:
         observations_by_camera: List[List[FiducialImageObservation]],
         config_store: ConfigStore,
         initial_pose: Optional[Pose3d] = None,
+        yaw_prior: Optional[float] = None,
     ) -> Union[CameraPoseObservation, None]:
-        """Jointly estimate one field-relative robot pose from all camera corners.
+        """Estimate a ground-plane robot pose (X, Y, yaw) from all camera corners.
+
+        Robot Z, roll, and pitch are fixed to zero. yaw_prior is an optional
+        independent gyro-derived field yaw in radians, distinct from the seed.
+        Its Gaussian uncertainty and corner noise scale come from local config.
 
         `observations_by_camera[i]` contains detections from camera i. Its
         intrinsic calibration and `camera_extrinsics[i]` must use that same
@@ -285,11 +290,8 @@ class MultiTargetCameraPoseEstimator:
         # result is selected by the joint all-camera reprojection error below.
         seeds = []
         if initial_pose is not None:
-            initial_matrix = _pose_matrix(initial_pose)
-            initial_rvec, _ = cv2.Rodrigues(initial_matrix[:3, :3])
-            seeds.append(
-                numpy.concatenate((initial_matrix[:3, 3], initial_rvec.reshape(3)))
-            )
+            seeds.append(numpy.array([initial_pose.X(), initial_pose.Y(),
+                                      initial_pose.rotation().Z()]))
 
         for camera in camera_data:
             field_points_cv = camera["field_points"] @ _WPILIB_TO_OPENCV.T
@@ -328,23 +330,33 @@ class MultiTargetCameraPoseEstimator:
                 field_from_robot_translation = field_from_camera_translation - (
                     field_from_robot_rotation @ robot_to_camera[:3, 3]
                 )
-                robot_rvec, _ = cv2.Rodrigues(field_from_robot_rotation)
-                seeds.append(
-                    numpy.concatenate(
-                        (field_from_robot_translation, robot_rvec.reshape(3))
-                    )
-                )
+                seeds.append(numpy.array([
+                    field_from_robot_translation[0], field_from_robot_translation[1],
+                    numpy.arctan2(field_from_robot_rotation[1, 0],
+                                  field_from_robot_rotation[0, 0]),
+                ]))
 
         if not seeds:
             return self._pose_failed("PnP produced no pose seeds and no initial pose supplied")
 
-        def residual(parameters):
+        prior_weight = 0.0
+        if yaw_prior is not None:
+            sigma_yaw = numpy.deg2rad(local.yaw_prior_stddev_deg)
+            sigma_pixel = local.corner_noise_stddev_px
+            if (not numpy.isfinite(yaw_prior) or not numpy.isfinite(sigma_yaw)
+                    or sigma_yaw <= 0 or not numpy.isfinite(sigma_pixel)
+                    or sigma_pixel <= 0):
+                return self._pose_failed("Invalid yaw prior or uncertainty settings")
+            prior_weight = sigma_pixel / sigma_yaw
+
+        def pixel_residual(parameters):
             """Return predicted-minus-observed pixel errors for every corner.
 
-            Parameters are [robot field X, Y, Z, rotation-vector X, Y, Z].
+            Parameters are [robot field X, Y, yaw radians].
             """
-            field_from_robot_rotation, _ = cv2.Rodrigues(parameters[3:6])
-            field_from_robot_translation = parameters[:3]
+            c, s = numpy.cos(parameters[2]), numpy.sin(parameters[2])
+            field_from_robot_rotation = numpy.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+            field_from_robot_translation = numpy.array([parameters[0], parameters[1], 0.0])
             all_residuals = []
             for camera in camera_data:
                 robot_to_camera = camera["robot_to_camera"]
@@ -388,12 +400,21 @@ class MultiTargetCameraPoseEstimator:
                 all_residuals.append(pixel_residuals.reshape(-1))
             return numpy.concatenate(all_residuals)
 
+        def residual(parameters):
+            pixels = pixel_residual(parameters)
+            if yaw_prior is None:
+                return pixels
+            # Shortest angular difference, including the +/-pi boundary.
+            delta = numpy.arctan2(numpy.sin(parameters[2] - yaw_prior),
+                                 numpy.cos(parameters[2] - yaw_prior))
+            return numpy.append(pixels, delta * prior_weight)
+
         best_parameters = None
         best_cost = float("inf")
         solver_failures = []
         for seed in seeds:
             try:
-                # LM adjusts the six pose numbers to reduce the pixel residuals.
+                # LM adjusts the three planar pose numbers to reduce the pixel residuals.
                 # `2-point` estimates the Jacobian by slightly perturbing each
                 # parameter; `x_scale="jac"` balances meters and radians.
                 result = least_squares(
@@ -407,7 +428,7 @@ class MultiTargetCameraPoseEstimator:
             except (ValueError, cv2.error, numpy.linalg.LinAlgError) as error:
                 solver_failures.append(str(error))
                 continue
-            # Compare seeds using total squared pixel error. Keep only a
+            # Compare seeds using image error plus the optional yaw prior. Keep only a
             # converged finite solution with the lowest joint reprojection cost.
             cost = float(result.fun @ result.fun)
             if result.success and numpy.isfinite(cost) and cost < best_cost:
@@ -419,16 +440,14 @@ class MultiTargetCameraPoseEstimator:
             return self._pose_failed(
                 "No converged finite pose solution: " + "; ".join(solver_failures)
             )
-        robot_rotation, _ = cv2.Rodrigues(best_parameters[3:6])
-        field_from_robot = numpy.eye(4, dtype=numpy.float64)
-        field_from_robot[:3, :3] = robot_rotation
-        field_from_robot[:3, 3] = best_parameters[:3]
-        robot_pose = _pose_from_matrix(field_from_robot)
+        robot_pose = Pose3d(Translation3d(best_parameters[0], best_parameters[1], 0.0),
+                            Rotation3d(0.0, 0.0, best_parameters[2]))
         point_count = sum(camera["image_points"].shape[0] for camera in camera_data)
         # RMS is the typical 2D corner error in pixels: sum(dx²+dy²) divided
         # by the number of corners, then square-rooted.
-        rms_error = float(numpy.sqrt(best_cost / point_count))
-        final_residuals = residual(best_parameters)
+        # Report only image error; the yaw prior is not a measured corner.
+        final_residuals = pixel_residual(best_parameters)
+        rms_error = float(numpy.sqrt(final_residuals @ final_residuals / point_count))
         offset = 0
         for camera in camera_data:
             count = camera["image_points"].shape[0]

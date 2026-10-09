@@ -75,9 +75,13 @@ def _run_aruco(config, remote_config_source):
         ]
         t_split = time.perf_counter()
 
-        timestamped_seed_pose: Optional[TimestampedPose] = (
-            robot_pose_source.get_pose()
-        )
+        feedback_pose = robot_pose_source.get_pose()
+        yaw_prior = None
+        if feedback_pose is not None:
+            age_s = (timestamp - feedback_pose.timestamp_us) / 1e6
+            if 0 <= age_s <= config.local_config.yaw_prior_max_age_s:
+                yaw_prior = feedback_pose.pose.rotation().Z()
+        timestamped_seed_pose: Optional[TimestampedPose] = feedback_pose
         if previous_vision_robot_pose is not None and (
             timestamped_seed_pose is None
             or previous_vision_robot_pose.timestamp_us
@@ -137,6 +141,7 @@ def _run_aruco(config, remote_config_source):
             all_detections,
             config,
             seed_pose,
+            yaw_prior=yaw_prior,
         )
         if robot_pose_observation is not None:
             previous_vision_robot_pose = TimestampedPose(

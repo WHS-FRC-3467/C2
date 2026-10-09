@@ -29,6 +29,11 @@ class FileConfigSource(ConfigSource):
             config_store.local_config.server_ip = config_data["server_ip"]
             config_store.local_config.stream_port = config_data["stream_port"]
             config_store.local_config.num_cameras = config_data.get("num_cameras", 4)
+            for key in ("yaw_prior_stddev_deg", "corner_noise_stddev_px", "yaw_prior_max_age_s"):
+                value = float(config_data.get(key, getattr(config_store.local_config, key)))
+                if not numpy.isfinite(value) or value <= 0:
+                    raise ValueError(f"{key} must be finite and positive")
+                setattr(config_store.local_config, key, value)
             config_store.local_config.camera_id = str(config_data["camera_id"])
             config_store.local_config.camera_resolution_width = config_data[
                 "camera_resolution_width"
