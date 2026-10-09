@@ -70,7 +70,7 @@ class ArucoNanoFiducialDetector:
         self._handle = _lib.create(dictionary_id)
         self._det_buf = (_Detection * MAX_DETECTIONS)()
         self._previous_observations: dict[int, numpy.ndarray] = {}
-        self.last_crop_boxes: dict[int, tuple[int, int, int, int]] = {}
+        self.last_crop_boxes: dict[tuple[int, ...], tuple[int, int, int, int]] = {}
 
     def __del__(self):
         if hasattr(self, "_handle") and self._handle:
@@ -98,12 +98,16 @@ class ArucoNanoFiducialDetector:
 
         found_by_id: dict[int, FiducialImageObservation] = {}
         expected_ids: set[int] = set()
+        boxes = []
         for tag_id, corners in roi_by_id.items():
             x1, y1, x2, y2 = self._padded_bounds(corners, width, height)
             if x2 <= x1 or y2 <= y1:
                 continue
             expected_ids.add(tag_id)
-            self.last_crop_boxes[tag_id] = (x1, y1, x2, y2)
+            boxes.append(((tag_id,), (x1, y1, x2, y2)))
+
+        self.last_crop_boxes = dict(self._merge_crop_boxes(boxes))
+        for x1, y1, x2, y2 in self.last_crop_boxes.values():
 
             # Detection corners are crop-relative; restore full-frame
             # coordinates before handing observations to pose estimation.
@@ -118,7 +122,9 @@ class ArucoNanoFiducialDetector:
 
         # Recover with a full-image scan if there are no expected ids,
         # no tags were found, or a previously found tag is no longer there
-        previous_ids = set(self._previous_observations)
+        # Tags deliberately excluded by the nearest-four selection should
+        # not force a full scan simply because their crops were not searched.
+        previous_ids = set(self._previous_observations).intersection(expected_ids)
         missing_previous_ids = previous_ids - found_by_id.keys()
 
         should_scan_full = (
@@ -140,6 +146,26 @@ class ArucoNanoFiducialDetector:
             for observation in observations
         }
         return observations
+
+    @staticmethod
+    def _merge_crop_boxes(boxes):
+        """Merge intersecting rectangles, including overlaps created by a merge."""
+        merged = []
+        for tag_ids, bounds in boxes:
+            x1, y1, x2, y2 = bounds
+            index = 0
+            while index < len(merged):
+                other_ids, (ox1, oy1, ox2, oy2) = merged[index]
+                if x1 < ox2 and ox1 < x2 and y1 < oy2 and oy1 < y2:
+                    tag_ids = tuple(sorted(set(tag_ids).union(other_ids)))
+                    x1, y1 = min(x1, ox1), min(y1, oy1)
+                    x2, y2 = max(x2, ox2), max(y2, oy2)
+                    merged.pop(index)
+                    index = 0
+                else:
+                    index += 1
+            merged.append((tag_ids, (x1, y1, x2, y2)))
+        return merged
 
     def _padded_bounds(
         self, corners: numpy.ndarray, image_width: int, image_height: int

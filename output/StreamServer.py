@@ -1,5 +1,6 @@
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import cv2
 
@@ -7,6 +8,7 @@ from input.Config import ConfigStore
 
 JPEG_QUALITY = 80
 RAW_JPEG_QUALITY = 95
+STREAM_INTERVAL_S = 1 / 30
 
 
 class StreamServer:
@@ -47,8 +49,6 @@ class MjpegServer(StreamServer):
                             with self_mjpeg._lock:
                                 frame = self_mjpeg._frame
                             if frame is None:
-                                import time
-
                                 time.sleep(0.01)
                                 continue
                             ret, jpeg = cv2.imencode(".jpg", frame, encode_params)
@@ -63,7 +63,9 @@ class MjpegServer(StreamServer):
                             self.wfile.write(b"\r\n")
                             self.wfile.write(data)
                             self.wfile.write(b"\r\n")
-                    except BrokenPipeError:
+                            self.wfile.flush()
+                            time.sleep(STREAM_INTERVAL_S)
+                    except (BrokenPipeError, ConnectionResetError):
                         return
                 else:
                     self.send_error(404)
@@ -75,7 +77,7 @@ class MjpegServer(StreamServer):
         return MJPEGHandler
 
     def _run(self, port: int) -> None:
-        server = HTTPServer(("", port), self._make_handler())
+        server = ThreadingHTTPServer(("", port), self._make_handler())
         server.serve_forever()
 
     def start(self, config_store: ConfigStore) -> None:
@@ -131,8 +133,6 @@ class RawCameraMjpegServer:
                             with self_raw._lock:
                                 frame = self_raw._frame
                             if frame is None:
-                                import time
-
                                 time.sleep(0.01)
                                 continue
                             ret, jpeg = cv2.imencode(".jpg", frame, encode_params)
@@ -147,7 +147,9 @@ class RawCameraMjpegServer:
                             self.wfile.write(b"\r\n")
                             self.wfile.write(data)
                             self.wfile.write(b"\r\n")
-                    except BrokenPipeError:
+                            self.wfile.flush()
+                            time.sleep(STREAM_INTERVAL_S)
+                    except (BrokenPipeError, ConnectionResetError):
                         pass
                     finally:
                         with self_raw._client_count_lock:

@@ -95,6 +95,7 @@ def _run_aruco(config, remote_config_source):
             camera_pose_estimator.project_tag_corners_by_camera(
                 seed_pose,
                 config,
+                [(frame.shape[1], frame.shape[0]) for frame in sub_frames],
             )
         )
 
@@ -154,6 +155,13 @@ def _run_aruco(config, remote_config_source):
         t_stream = time.perf_counter()
 
         if fps is not None:
+            if camera_pose_estimator.last_failure_reason is not None:
+                print("Pose unavailable:", camera_pose_estimator.last_failure_reason)
+            elif robot_pose_observation is not None:
+                print("Pose reprojection RMS (pixels):", ", ".join(
+                    f"camera {index}: {error:.2f}"
+                    for index, error in camera_pose_estimator.last_camera_errors.items()
+                ))
             print(
                 f"  cap:{(t_cap1-t_cap0)*1000:.1f} split:{(t_split-t0)*1000:.1f} cvt:{(t_cvt-t_split)*1000:.1f} "
                 f"det:{(t_det-t_split)*1000:.1f} pose:{(t_pose-t_det)*1000:.1f} "

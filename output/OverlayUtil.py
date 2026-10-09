@@ -5,15 +5,15 @@ from pipeline.VisionTypes import FiducialImageObservation
 
 def overlay_crop_boxes(
     image: cv2.typing.MatLike,
-    crop_boxes: dict[int, tuple[int, int, int, int]],
+    crop_boxes: dict[tuple[int, ...], tuple[int, int, int, int]],
 ) -> None:
     """Draw the exact crop bounds searched by a camera's detector."""
-    for tag_id, (x1, y1, x2, y2) in crop_boxes.items():
+    for tag_ids, (x1, y1, x2, y2) in crop_boxes.items():
         # Crop end coordinates are exclusive; draw inside the searched pixels.
         cv2.rectangle(image, (x1, y1), (x2 - 1, y2 - 1), (255, 255, 0), 1)
         cv2.putText(
             image,
-            f"ROI {tag_id}",
+            "ROI " + ",".join(str(tag_id) for tag_id in tag_ids),
             (x1 + 2, min(y1 + 15, image.shape[0] - 1)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.4,

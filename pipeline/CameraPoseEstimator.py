@@ -55,10 +55,48 @@ def _pose_from_matrix(matrix: numpy.ndarray) -> Pose3d:
     )
 
 class MultiTargetCameraPoseEstimator:
+    last_failure_reason: Optional[str] = None
+    MIN_PROJECTED_TAG_EDGE_PX = 10.0
+
+    def __init__(self) -> None:
+        self.last_camera_errors: dict[int, float] = {}
+        self._field_tag_cache_key = None
+        self._field_tag_corners: dict[int, numpy.ndarray] = {}
+
+    def _get_field_tag_corners(self, remote) -> dict[int, numpy.ndarray]:
+        # Compare values, since the NT source parses a new layout dict each frame.
+        tags = []
+        for tag in remote.tag_layout.get("tags", []):
+            t = tag["pose"]["translation"]
+            q = tag["pose"]["rotation"]["quaternion"]
+            tags.append((tag["ID"], t["x"], t["y"], t["z"],
+                         q["W"], q["X"], q["Y"], q["Z"]))
+        key = (remote.fiducial_size_m, tuple(sorted(tags)))
+        if key != self._field_tag_cache_key:
+            half = remote.fiducial_size_m / 2.0
+            offsets = numpy.asarray(
+                [(0, half, -half), (0, -half, -half),
+                 (0, -half, half), (0, half, half)], dtype=numpy.float64
+            )
+            corners = {}
+            for tag_id, x, y, z, w, qx, qy, qz in tags:
+                pose = Pose3d(Translation3d(x, y, z),
+                              Rotation3d(Quaternion(w, qx, qy, qz)))
+                matrix = _pose_matrix(pose)
+                corners[tag_id] = offsets @ matrix[:3, :3].T + matrix[:3, 3]
+            self._field_tag_corners = corners
+            self._field_tag_cache_key = key
+        return self._field_tag_corners
+
+    def _pose_failed(self, reason: str) -> None:
+        self.last_failure_reason = reason
+        return None
+
     def project_tag_corners_by_camera(
-        self, robot_pose: Optional[Pose3d], config_store: ConfigStore
+        self, robot_pose: Optional[Pose3d], config_store: ConfigStore,
+        image_sizes: Optional[List[tuple[int, int]]] = None,
     ) -> List[dict[int, numpy.ndarray]]:
-        """Project known field-tag corners into each camera for ROI detection."""
+        """Project the four nearest in-view field tags for each camera."""
         local = config_store.local_config
         remote = config_store.remote_config
         camera_count = local.num_cameras
@@ -73,19 +111,7 @@ class MultiTargetCameraPoseEstimator:
             return projected_by_camera
 
         field_from_robot = _pose_matrix(robot_pose)
-        corner_offsets = numpy.asarray(
-            [
-                (0, remote.fiducial_size_m / 2.0, -remote.fiducial_size_m / 2.0),
-                (0, -remote.fiducial_size_m / 2.0, -remote.fiducial_size_m / 2.0),
-                (0, -remote.fiducial_size_m / 2.0, remote.fiducial_size_m / 2.0),
-                (0, remote.fiducial_size_m / 2.0, remote.fiducial_size_m / 2.0),
-            ],
-            dtype=numpy.float64,
-        )
-
-        tag_data_by_id = {
-            tag_data["ID"]: tag_data for tag_data in remote.tag_layout.get("tags", [])
-        }
+        field_tags = self._get_field_tag_corners(remote)
         for camera_index in range(
             min(
                 camera_count,
@@ -108,30 +134,12 @@ class MultiTargetCameraPoseEstimator:
                 + field_from_robot[:3, :3] @ robot_from_camera[:3, 3]
             )
 
-            for tag_id, tag_data in tag_data_by_id.items():
-                pose_data = tag_data["pose"]
-                rotation_data = pose_data["rotation"]["quaternion"]
-                tag_pose = Pose3d(
-                    Translation3d(
-                        pose_data["translation"]["x"],
-                        pose_data["translation"]["y"],
-                        pose_data["translation"]["z"],
-                    ),
-                    Rotation3d(
-                        Quaternion(
-                            rotation_data["W"],
-                            rotation_data["X"],
-                            rotation_data["Y"],
-                            rotation_data["Z"],
-                        )
-                    ),
-                )
-                field_from_tag = _pose_matrix(tag_pose)
-                field_points = (
-                    corner_offsets @ field_from_tag[:3, :3].T
-                    + field_from_tag[:3, 3]
-                )
-
+            candidates = []
+            width, height = (
+                image_sizes[camera_index] if image_sizes is not None
+                else (local.camera_resolution_width, local.camera_resolution_height)
+            )
+            for tag_id, field_points in field_tags.items():
                 # Row-vector form of transforming field points into the
                 # camera, then converting WPILib axes to OpenCV camera axes.
                 camera_points_wp = (
@@ -147,7 +155,27 @@ class MultiTargetCameraPoseEstimator:
                     camera_matrix,
                     distortion,
                 )
-                projected_by_camera[camera_index][tag_id] = pixels.reshape(4, 2)
+                corners = pixels.reshape(4, 2)
+                if not numpy.isfinite(corners).all():
+                    continue
+                edge_lengths = numpy.linalg.norm(
+                    numpy.roll(corners, -1, axis=0) - corners, axis=1
+                )
+                if edge_lengths.min() < self.MIN_PROJECTED_TAG_EDGE_PX:
+                    continue
+                if width > 0 and height > 0:
+                    low = corners.min(axis=0)
+                    high = corners.max(axis=0)
+                    if high[0] < 0 or high[1] < 0 or low[0] >= width or low[1] >= height:
+                        continue
+                distance = float(numpy.linalg.norm(
+                    field_points.mean(axis=0) - field_from_camera_translation
+                ))
+                candidates.append((distance, tag_id, corners))
+            candidates.sort(key=lambda candidate: (candidate[0], candidate[1]))
+            projected_by_camera[camera_index] = {
+                tag_id: corners for _, tag_id, corners in candidates[:4]
+            }
 
         return projected_by_camera
 
@@ -176,43 +204,21 @@ class MultiTargetCameraPoseEstimator:
         """
         remote = config_store.remote_config
         local = config_store.local_config
+        self.last_failure_reason = None
+        self.last_camera_errors = {}
         if not remote.tag_layout or remote.fiducial_size_m <= 0:
-            return None
+            return self._pose_failed(
+                f"Missing tag layout or invalid fiducial_size_m={remote.fiducial_size_m}"
+            )
         if not observations_by_camera:
-            return None
+            return self._pose_failed("No camera observations supplied")
         if len(remote.camera_extrinsics) < len(observations_by_camera):
-            return None
-
-        # Turn the remote tag-layout dictionaries into WPILib poses so each
-        # detected tag can be mapped to its known location and orientation.
-        tag_poses = {}
-        for tag_data in remote.tag_layout.get("tags", []):
-            tag_poses[tag_data["ID"]] = Pose3d(
-                Translation3d(
-                    tag_data["pose"]["translation"]["x"],
-                    tag_data["pose"]["translation"]["y"],
-                    tag_data["pose"]["translation"]["z"],
-                ),
-                Rotation3d(
-                    Quaternion(
-                        tag_data["pose"]["rotation"]["quaternion"]["W"],
-                        tag_data["pose"]["rotation"]["quaternion"]["X"],
-                        tag_data["pose"]["rotation"]["quaternion"]["Y"],
-                        tag_data["pose"]["rotation"]["quaternion"]["Z"],
-                    )
-                ),
+            return self._pose_failed(
+                f"Need {len(observations_by_camera)} camera extrinsics, "
+                f"received {len(remote.camera_extrinsics)}"
             )
 
-        fid_size = remote.fiducial_size_m
-        # These are the four corners relative to the tag center, expressed in
-        # the tag's local axes. The order must match the detector's corner order
-        # or the 3D corners will be paired with the wrong measured pixels.
-        corner_offsets = (
-            (0, fid_size / 2.0, -fid_size / 2.0),
-            (0, -fid_size / 2.0, -fid_size / 2.0),
-            (0, -fid_size / 2.0, fid_size / 2.0),
-            (0, fid_size / 2.0, fid_size / 2.0),
-        )
+        field_tags = self._get_field_tag_corners(remote)
 
         # Build one bundle per camera. Each bundle keeps field points paired
         # with image pixels and with that camera's own calibration/extrinsic.
@@ -224,25 +230,20 @@ class MultiTargetCameraPoseEstimator:
             if camera_index >= len(local.camera_matrices) or camera_index >= len(
                 local.distortion_coefficients
             ):
-                return None
+                return self._pose_failed(f"Missing calibration for camera {camera_index}")
             camera_matrix = local.camera_matrices[camera_index]
             distortion = local.distortion_coefficients[camera_index]
             if numpy.asarray(camera_matrix).size == 0 or numpy.asarray(distortion).size == 0:
-                return None
+                return self._pose_failed(f"Empty calibration for camera {camera_index}")
 
             field_points = []
             image_points = []
             for observation in camera_observations:
-                tag_pose = tag_poses.get(observation.tag_id)
-                if tag_pose is None:
+                tag_corners = field_tags.get(observation.tag_id)
+                if tag_corners is None:
                     continue
-                for corner_index, corner_offset in enumerate(corner_offsets):
-                    corner = tag_pose + Transform3d(
-                        Translation3d(*corner_offset), Rotation3d()
-                    )
-                    field_points.append(
-                        [corner.X(), corner.Y(), corner.Z()]
-                    )
+                for corner_index, corner in enumerate(tag_corners):
+                    field_points.append(corner.tolist())
                     # Detector output is commonly shaped (1, 4, 2); flattening
                     # to (4, 2) makes the four measured pixel pairs explicit.
                     used_corner = numpy.asarray(observation.corners).reshape(4, 2)[
@@ -269,7 +270,14 @@ class MultiTargetCameraPoseEstimator:
             )
 
         if not camera_data or not used_tag_ids:
-            return None
+            detected_ids = sorted({
+                observation.tag_id
+                for observations in observations_by_camera
+                for observation in observations
+            })
+            return self._pose_failed(
+                f"No usable layout tags; detected IDs={detected_ids}"
+            )
 
         # A nonlinear solver needs a starting pose. The previous frame is a
         # useful seed when available; independent per-camera PnP estimates add
@@ -328,7 +336,7 @@ class MultiTargetCameraPoseEstimator:
                 )
 
         if not seeds:
-            return None
+            return self._pose_failed("PnP produced no pose seeds and no initial pose supplied")
 
         def residual(parameters):
             """Return predicted-minus-observed pixel errors for every corner.
@@ -375,13 +383,14 @@ class MultiTargetCameraPoseEstimator:
                 # Give it a large penalty so the optimizer moves it in front.
                 behind = depths <= 1e-6
                 pixel_residuals[behind] = (
-                    1000.0 + numpy.abs(depths[behind]) * 100.0
+                    1000.0 + numpy.abs(depths[behind, numpy.newaxis]) * 100.0
                 )
                 all_residuals.append(pixel_residuals.reshape(-1))
             return numpy.concatenate(all_residuals)
 
         best_parameters = None
         best_cost = float("inf")
+        solver_failures = []
         for seed in seeds:
             try:
                 # LM adjusts the six pose numbers to reduce the pixel residuals.
@@ -395,16 +404,21 @@ class MultiTargetCameraPoseEstimator:
                     x_scale="jac",
                     max_nfev=200,
                 )
-            except (ValueError, cv2.error, numpy.linalg.LinAlgError):
+            except (ValueError, cv2.error, numpy.linalg.LinAlgError) as error:
+                solver_failures.append(str(error))
                 continue
             # Compare seeds using total squared pixel error. Keep only a
             # converged finite solution with the lowest joint reprojection cost.
             cost = float(result.fun @ result.fun)
             if result.success and numpy.isfinite(cost) and cost < best_cost:
                 best_parameters, best_cost = result.x, cost
+            elif not result.success or not numpy.isfinite(cost):
+                solver_failures.append(f"{result.message}; cost={cost}")
 
         if best_parameters is None or not numpy.isfinite(best_cost):
-            return None
+            return self._pose_failed(
+                "No converged finite pose solution: " + "; ".join(solver_failures)
+            )
         robot_rotation, _ = cv2.Rodrigues(best_parameters[3:6])
         field_from_robot = numpy.eye(4, dtype=numpy.float64)
         field_from_robot[:3, :3] = robot_rotation
@@ -414,6 +428,15 @@ class MultiTargetCameraPoseEstimator:
         # RMS is the typical 2D corner error in pixels: sum(dx²+dy²) divided
         # by the number of corners, then square-rooted.
         rms_error = float(numpy.sqrt(best_cost / point_count))
+        final_residuals = residual(best_parameters)
+        offset = 0
+        for camera in camera_data:
+            count = camera["image_points"].shape[0]
+            camera_residuals = final_residuals[offset:offset + 2 * count]
+            self.last_camera_errors[camera["index"]] = float(
+                numpy.sqrt(camera_residuals @ camera_residuals / count)
+            )
+            offset += 2 * count
         return CameraPoseObservation(
             used_tag_ids, robot_pose, rms_error, None, None
         )
