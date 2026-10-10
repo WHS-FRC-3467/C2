@@ -13,6 +13,7 @@ class LocalConfig:
     stream_port: int = 8000
     num_cameras: int = 4
     detector_mode: str = "aruco"  # "aruco" or "object_detection"
+    record_raw_frames: bool = False
     has_calibration: bool = False
     camera_matrix: numpy.typing.NDArray[numpy.float64] = field(default_factory=lambda: numpy.array([]))
     distortion_coefficients: numpy.typing.NDArray[numpy.float64] = field(default_factory=lambda: numpy.array([]))

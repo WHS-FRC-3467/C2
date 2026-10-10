@@ -183,4 +183,5 @@ src/main/deploy/trajectories/*.pathblob
 # Shot map temporary file
 ~*.xlsx
 __pycache__/
+/match_*/
 aruco_nano/build/
