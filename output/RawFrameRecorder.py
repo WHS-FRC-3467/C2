@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from queue import Empty, Full, Queue
+from queue import Empty, Queue
 from threading import Event, Thread
 
 import cv2
@@ -9,18 +9,17 @@ import cv2
 class RawFrameRecorder:
     """Record unmodified capture frames as a Motion JPEG stream.
 
-    The queue holds at most eight frames. Overload drops new frames.
-    The only work on the capture
-    thread is a frame copy and a nonblocking enqueue.
+    Every submitted frame is queued without a size limit. If encoding or
+    disk writes fall behind, the backlog grows in memory until it is drained.
+    The capture thread only copies the frame and performs a nonblocking enqueue.
     """
 
     def __init__(self, enabled: bool) -> None:
         self._enabled = enabled
-        self._queue = Queue(maxsize=8)
+        self._queue = Queue()
         self._stop = Event()
         self._failed = Event()
         self._thread = None
-        self.dropped_frames = 0
         self.path = None
 
     def __enter__(self):
@@ -35,14 +34,8 @@ class RawFrameRecorder:
     def submit(self, frame) -> None:
         if not self._enabled or self._failed.is_set() or self._stop.is_set():
             return
-        if self._queue.full():
-            self.dropped_frames += 1
-            return
-        try:
-            # Own the pixels before detection/overlays can mutate the capture.
-            self._queue.put_nowait(frame.copy())
-        except Full:
-            self.dropped_frames += 1
+        # Own the pixels before detection/overlays can mutate the capture.
+        self._queue.put_nowait(frame.copy())
 
     def _write_frames(self) -> None:
         try:
@@ -75,4 +68,5 @@ class RawFrameRecorder:
         self._stop.set()
         if self._thread is not None:
             self._thread.join()
-            print(f"Raw frame recording finished; dropped {self.dropped_frames} frames")
+            if not self._failed.is_set():
+                print("Raw frame recording finished; all queued frames written")
