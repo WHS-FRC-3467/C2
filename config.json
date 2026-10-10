@@ -3,5 +3,6 @@
   "server_ip": "localhost",
   "stream_port": 8000,
   "detector_mode": "object_detection",
-  "record_raw_frames": false
+  "record_raw_frames": false,
+  "record_jpeg_quality": 85
 }

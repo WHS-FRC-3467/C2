@@ -30,6 +30,7 @@ class FileConfigSource(ConfigSource):
             config_store.local_config.num_cameras = config_data.get("num_cameras", 4)
             config_store.local_config.detector_mode = config_data.get("detector_mode", "aruco")
             config_store.local_config.record_raw_frames = config_data.get("record_raw_frames", False)
+            config_store.local_config.record_jpeg_quality = config_data.get("record_jpeg_quality", 85)
             config_store.local_config.objdetect_model_path = config_data.get("objdetect_model_path", "model.pt")
             config_store.local_config.objdetect_calibration_file = config_data.get("objdetect_calibration_file", "calibration_objdetect.yml")
 

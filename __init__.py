@@ -52,7 +52,8 @@ def _run_aruco(config, local_config_source, remote_config_source, calibration_co
     frame_count = 0
     last_print = 0
     was_calibrating = False
-    with RawFrameRecorder(config.local_config.record_raw_frames) as recorder:
+    with RawFrameRecorder(config.local_config.record_raw_frames,
+                          config.local_config.record_jpeg_quality) as recorder:
         while True:
             remote_config_source.update(config)
             timestamp = time.time()
@@ -158,7 +159,8 @@ def _run_object_detection(config, local_config_source, remote_config_source):
 
     frame_count = 0
     last_print = 0
-    with RawFrameRecorder(config.local_config.record_raw_frames) as recorder:
+    with RawFrameRecorder(config.local_config.record_raw_frames,
+                          config.local_config.record_jpeg_quality) as recorder:
         while True:
             remote_config_source.update(config)
             timestamp = time.time()

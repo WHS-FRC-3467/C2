@@ -14,6 +14,7 @@ class LocalConfig:
     num_cameras: int = 4
     detector_mode: str = "aruco"  # "aruco" or "object_detection"
     record_raw_frames: bool = False
+    record_jpeg_quality: int = 85  # 1-100; lower values produce smaller recordings
     has_calibration: bool = False
     camera_matrix: numpy.typing.NDArray[numpy.float64] = field(default_factory=lambda: numpy.array([]))
     distortion_coefficients: numpy.typing.NDArray[numpy.float64] = field(default_factory=lambda: numpy.array([]))

@@ -9,15 +9,18 @@ import cv2
 
 
 class RawFrameRecorder:
-    """Record uncompressed pixels in MKV with capture-time timestamps.
+    """Record captured frames as MJPEG in MKV with capture-time timestamps.
 
     Every submitted frame is queued without a size limit. If encoding or
     disk writes fall behind, the backlog grows in memory until it is drained.
     The capture thread only copies the frame and performs a nonblocking enqueue.
     """
 
-    def __init__(self, enabled: bool) -> None:
+    def __init__(self, enabled: bool, jpeg_quality: int = 85) -> None:
+        if not 1 <= jpeg_quality <= 100:
+            raise ValueError("record_jpeg_quality must be between 1 and 100")
         self._enabled = enabled
+        self._jpeg_quality = jpeg_quality
         self._queue = Queue()
         self._stop = Event()
         self._failed = Event()
@@ -51,37 +54,37 @@ class RawFrameRecorder:
             stream = None
             first_timestamp = None
             last_pts = -1
-            # Matroska stores uncompressed BGR via its VFW compatibility mode.
-            with av.open(str(self.path), "w", format="matroska",
-                         options={"allow_raw_vfw": "1"}) as video:
+            with av.open(str(self.path), "w", format="matroska") as video:
                 while not self._stop.is_set() or not self._queue.empty():
                     try:
                         timestamp_ns, frame = self._queue.get(timeout=0.1)
                     except Empty:
                         continue
-                    if len(frame.shape) == 2:
-                        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                     if stream is None:
-                        stream = video.add_stream("rawvideo")
+                        stream = video.add_stream("mjpeg")
                         stream.width = frame.shape[1]
                         stream.height = frame.shape[0]
-                        stream.pix_fmt = "bgr24"
+                        stream.pix_fmt = "yuvj420p"
                         stream.time_base = time_base
                         stream.codec_context.time_base = time_base
                         first_timestamp = timestamp_ns
-                    if frame.shape != (stream.height, stream.width, 3):
+                    if frame.shape[:2] != (stream.height, stream.width):
                         raise ValueError("Capture resolution changed during recording")
-                    raw_frame = av.VideoFrame.from_ndarray(frame, format="bgr24")
+                    # OpenCV encodes grayscale directly, avoiding a BGR expansion.
+                    success, encoded = cv2.imencode(
+                        ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
+                    if not success:
+                        raise OSError("Could not encode frame as JPEG")
+                    packet = av.Packet(encoded.tobytes())
                     # Strictly increasing PTS also handles sub-millisecond captures.
-                    raw_frame.pts = max(last_pts + 1, (timestamp_ns - first_timestamp) // 1_000_000)
-                    raw_frame.time_base = time_base
-                    last_pts = raw_frame.pts
-                    # rawvideo packs pixels into packets; it performs no compression.
-                    for packet in stream.encode(raw_frame):
-                        video.mux(packet)
-                if stream is not None:
-                    for packet in stream.encode():
-                        video.mux(packet)
+                    packet.pts = max(last_pts + 1, (timestamp_ns - first_timestamp) // 1_000_000)
+                    packet.dts = packet.pts
+                    packet.time_base = time_base
+                    packet.stream = stream
+                    packet.is_keyframe = True
+                    last_pts = packet.pts
+                    # Packets are already compressed; mux without encoding again.
+                    video.mux(packet)
         except Exception as exc:
             self._failed.set()
             print(f"Raw frame recording stopped: {exc}")
