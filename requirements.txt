@@ -1,4 +1,5 @@
 opencv-python==4.13.0.92
+av>=16.0.0,<18
 flatbuffers==25.12.19
 numpy==2.4.4
 pyntcore==2026.2.2

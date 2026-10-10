@@ -63,7 +63,7 @@ def _run_aruco(config, local_config_source, remote_config_source, calibration_co
                 time.sleep(0.5)
                 continue
 
-            recorder.submit(image)
+            recorder.submit(image, int(t_cap1 * 1_000_000_000))
 
             fps = None
             frame_count += 1
@@ -169,7 +169,7 @@ def _run_object_detection(config, local_config_source, remote_config_source):
                 time.sleep(0.5)
                 continue
 
-            recorder.submit(image)
+            recorder.submit(image, int(t_cap1 * 1_000_000_000))
 
             fps = None
             frame_count += 1
