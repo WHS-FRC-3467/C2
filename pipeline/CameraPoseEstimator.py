@@ -57,9 +57,24 @@ def _pose_from_matrix(matrix: numpy.ndarray) -> Pose3d:
 class MultiTargetCameraPoseEstimator:
     last_failure_reason: Optional[str] = None
     MIN_PROJECTED_TAG_EDGE_PX = 10.0
+    PLANAR_FALLBACK_ENTER_RMS_PX = 3.0
+    PLANAR_FALLBACK_EXIT_RMS_PX = 2.0
+    UNCONSTRAINED_MAX_RMS_PX = 8.0
+    # Always-on robust fitting is kept off: it worsened mounting-error tests.
+    ROBUST_CORNERS = False
+    REJECT_INCONSISTENT_TAGS = False
+    REPAIR_BAD_TAGS = True
+    ROBUST_CORNER_SCALE_PX = 2.0
+    OPTIMIZER_TOLERANCE = 1e-8
+    OPTIMIZER_MAX_NFEV = 200
 
     def __init__(self) -> None:
         self.last_camera_errors: dict[int, float] = {}
+        self.last_rejected_observations: list[tuple[int, int]] = []
+        self.last_solver_mode: Optional[str] = None
+        self.last_planar_rms_px: Optional[float] = None
+        self._fallback_active = False
+        self._last_unconstrained_pose: Optional[Pose3d] = None
         self._field_tag_cache_key = None
         self._field_tag_corners: dict[int, numpy.ndarray] = {}
 
@@ -185,10 +200,131 @@ class MultiTargetCameraPoseEstimator:
         config_store: ConfigStore,
         initial_pose: Optional[Pose3d] = None,
         yaw_prior: Optional[float] = None,
-    ) -> Union[CameraPoseObservation, None]:
-        """Estimate a ground-plane robot pose (X, Y, yaw) from all camera corners.
+    ) -> Optional[CameraPoseObservation]:
+        """Try a planar pose, releasing Z/roll/pitch when its image fit is poor.
 
-        Robot Z, roll, and pitch are fixed to zero. yaw_prior is an optional
+        Enter fallback above 3 px corner RMS; return to planar at 2 px or less.
+        An unrestricted result must be at most 8 px RMS. Both optimizations
+        retain the optional gyro yaw prior, but thresholds use image error only.
+        The accepted Pose3d retains tilt for projection and subsequent seeds.
+        If both ordinary fits fail acceptance, robust corner fitting can identify
+        and remove at most one third of inconsistent camera/tag observations,
+        retaining at least two distinct tags, before refitting the pose.
+        """
+        self.last_solver_mode = None
+        self.last_rejected_observations = []
+        self.last_planar_rms_px = None
+        planar = self._solve_robot_pose(
+            observations_by_camera, config_store, initial_pose, yaw_prior, planar=True
+        )
+        planar_reason = self.last_failure_reason
+        if planar is not None:
+            self.last_planar_rms_px = planar.error_0
+            threshold = (self.PLANAR_FALLBACK_EXIT_RMS_PX if self._fallback_active
+                         else self.PLANAR_FALLBACK_ENTER_RMS_PX)
+            if planar.error_0 <= threshold:
+                self._fallback_active = False
+                self._last_unconstrained_pose = None
+                self.last_solver_mode = "planar"
+                return planar
+        seed = self._last_unconstrained_pose or initial_pose
+        unrestricted = self._solve_robot_pose(
+            observations_by_camera, config_store, seed, yaw_prior, planar=False
+        )
+        repaired = False
+        if self.REPAIR_BAD_TAGS and (unrestricted is None or
+                                    unrestricted.error_0 > self.UNCONSTRAINED_MAX_RMS_PX):
+            recovery = self._solve_robot_pose(
+                observations_by_camera, config_store, seed, yaw_prior,
+                planar=False, robust=True
+            )
+            if recovery is not None:
+                unrestricted = recovery
+                repaired = True
+        if unrestricted is not None and (self.REJECT_INCONSISTENT_TAGS or repaired):
+            filtered, rejected = self._consistent_observations(
+                unrestricted.pose_0, observations_by_camera, config_store
+            )
+            if rejected:
+                original_reason = self.last_failure_reason
+                original_errors = self.last_camera_errors.copy()
+                cleaned = self._solve_robot_pose(
+                    filtered, config_store, unrestricted.pose_0, yaw_prior, planar=False
+                )
+                if cleaned is not None:
+                    unrestricted = cleaned
+                    self.last_rejected_observations = rejected
+                else:
+                    self.last_failure_reason = original_reason
+                    self.last_camera_errors = original_errors
+        if unrestricted is not None and unrestricted.error_0 <= self.UNCONSTRAINED_MAX_RMS_PX:
+            self._fallback_active = True
+            self._last_unconstrained_pose = unrestricted.pose_0
+            self.last_solver_mode = "unconstrained"
+            return unrestricted
+        reason = (self.last_failure_reason if unrestricted is None else
+                  f"Unconstrained RMS {unrestricted.error_0:.2f} px exceeds "
+                  f"{self.UNCONSTRAINED_MAX_RMS_PX:.2f} px")
+        self.last_camera_errors = {}
+        return self._pose_failed(
+            f"Planar fit unavailable or above threshold ({self.last_planar_rms_px}; "
+            f"{planar_reason}); fallback rejected: {reason}"
+        )
+
+    def _consistent_observations(self, robot_pose, observations, config_store):
+        """Identify a minority of tag observations inconsistent with a full pose.
+
+        Remove whole camera/tag observations, retaining at least two tag IDs.
+        A majority of inconsistent tags cannot establish a reliable consensus.
+        """
+        field = self._get_field_tag_corners(config_store.remote_config)
+        robot = _pose_matrix(robot_pose)
+        errors = []
+        for c, items in enumerate(observations):
+            if not items:
+                continue
+            camera = robot @ _pose_matrix(config_store.remote_config.camera_extrinsics[c])
+            for observation in items:
+                if observation.tag_id not in field:
+                    continue
+                try:
+                    measured = numpy.asarray(observation.corners, dtype=numpy.float64).reshape(4, 2)
+                except (TypeError, ValueError):
+                    continue
+                if not numpy.isfinite(measured).all():
+                    continue
+                points = ((field[observation.tag_id] - camera[:3, 3])
+                          @ camera[:3, :3] @ _WPILIB_TO_OPENCV.T)
+                pixels, _ = cv2.projectPoints(
+                    points, numpy.zeros(3), numpy.zeros(3),
+                    config_store.local_config.camera_matrices[c],
+                    config_store.local_config.distortion_coefficients[c])
+                difference = pixels.reshape(4, 2) - measured
+                errors.append((c, observation.tag_id, float(numpy.sqrt(numpy.sum(difference**2)/4))))
+        if not errors:
+            return observations, []
+        threshold = max(8.0, 3.0 * numpy.median([e[2] for e in errors]))
+        rejected = [(c, tag) for c, tag, error in errors if error > threshold]
+        if not rejected or len(rejected) * 3 > len(errors):
+            return observations, []
+        remaining = {tag for c, tag, error in errors if (c, tag) not in rejected}
+        if len(remaining) < 2:
+            return observations, []
+        return [[o for o in items if (c, o.tag_id) not in rejected]
+                for c, items in enumerate(observations)], rejected
+
+    def _solve_robot_pose(
+        self,
+        observations_by_camera: List[List[FiducialImageObservation]],
+        config_store: ConfigStore,
+        initial_pose: Optional[Pose3d] = None,
+        yaw_prior: Optional[float] = None,
+        planar: bool = True,
+        robust: Optional[bool] = None,
+    ) -> Union[CameraPoseObservation, None]:
+        """Optimize either a planar pose or a full six-dimensional pose.
+
+        In planar mode robot Z, roll, and pitch are fixed to zero. yaw_prior is an optional
         independent gyro-derived field yaw in radians, distinct from the seed.
         Its Gaussian uncertainty and corner noise scale come from local config.
 
@@ -207,6 +343,7 @@ class MultiTargetCameraPoseEstimator:
         with the detector's measured corners. It minimizes all cameras' pixel
         errors together.
         """
+        use_robust = self.ROBUST_CORNERS if robust is None else robust
         remote = config_store.remote_config
         local = config_store.local_config
         self.last_failure_reason = None
@@ -247,13 +384,17 @@ class MultiTargetCameraPoseEstimator:
                 tag_corners = field_tags.get(observation.tag_id)
                 if tag_corners is None:
                     continue
+                try:
+                    measured_corners = numpy.asarray(observation.corners, dtype=numpy.float64).reshape(4, 2)
+                except (TypeError, ValueError):
+                    continue
+                if not numpy.isfinite(measured_corners).all():
+                    continue
                 for corner_index, corner in enumerate(tag_corners):
                     field_points.append(corner.tolist())
                     # Detector output is commonly shaped (1, 4, 2); flattening
                     # to (4, 2) makes the four measured pixel pairs explicit.
-                    used_corner = numpy.asarray(observation.corners).reshape(4, 2)[
-                        corner_index
-                    ]
+                    used_corner = measured_corners[corner_index]
                     image_points.append(used_corner.tolist())
                 if observation.tag_id not in used_tag_ids:
                     used_tag_ids.append(observation.tag_id)
@@ -289,9 +430,15 @@ class MultiTargetCameraPoseEstimator:
         # fresh seeds. These PnP calls only initialize the search. The final
         # result is selected by the joint all-camera reprojection error below.
         seeds = []
+        def seed_from_matrix(matrix):
+            if planar:
+                return numpy.array([matrix[0, 3], matrix[1, 3],
+                                    numpy.arctan2(matrix[1, 0], matrix[0, 0])])
+            rvec, _ = cv2.Rodrigues(matrix[:3, :3])
+            return numpy.concatenate((matrix[:3, 3], rvec.reshape(3)))
+
         if initial_pose is not None:
-            seeds.append(numpy.array([initial_pose.X(), initial_pose.Y(),
-                                      initial_pose.rotation().Z()]))
+            seeds.append(seed_from_matrix(_pose_matrix(initial_pose)))
 
         for camera in camera_data:
             field_points_cv = camera["field_points"] @ _WPILIB_TO_OPENCV.T
@@ -330,11 +477,10 @@ class MultiTargetCameraPoseEstimator:
                 field_from_robot_translation = field_from_camera_translation - (
                     field_from_robot_rotation @ robot_to_camera[:3, 3]
                 )
-                seeds.append(numpy.array([
-                    field_from_robot_translation[0], field_from_robot_translation[1],
-                    numpy.arctan2(field_from_robot_rotation[1, 0],
-                                  field_from_robot_rotation[0, 0]),
-                ]))
+                seed_matrix = numpy.eye(4)
+                seed_matrix[:3, :3] = field_from_robot_rotation
+                seed_matrix[:3, 3] = field_from_robot_translation
+                seeds.append(seed_from_matrix(seed_matrix))
 
         if not seeds:
             return self._pose_failed("PnP produced no pose seeds and no initial pose supplied")
@@ -352,11 +498,15 @@ class MultiTargetCameraPoseEstimator:
         def pixel_residual(parameters):
             """Return predicted-minus-observed pixel errors for every corner.
 
-            Parameters are [robot field X, Y, yaw radians].
+            Planar parameters are [X, Y, yaw]; full parameters are XYZ and rvec.
             """
-            c, s = numpy.cos(parameters[2]), numpy.sin(parameters[2])
-            field_from_robot_rotation = numpy.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
-            field_from_robot_translation = numpy.array([parameters[0], parameters[1], 0.0])
+            if planar:
+                c, s = numpy.cos(parameters[2]), numpy.sin(parameters[2])
+                field_from_robot_rotation = numpy.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+                field_from_robot_translation = numpy.array([parameters[0], parameters[1], 0.0])
+            else:
+                field_from_robot_rotation, _ = cv2.Rodrigues(parameters[3:6])
+                field_from_robot_translation = parameters[:3]
             all_residuals = []
             for camera in camera_data:
                 robot_to_camera = camera["robot_to_camera"]
@@ -405,8 +555,13 @@ class MultiTargetCameraPoseEstimator:
             if yaw_prior is None:
                 return pixels
             # Shortest angular difference, including the +/-pi boundary.
-            delta = numpy.arctan2(numpy.sin(parameters[2] - yaw_prior),
-                                 numpy.cos(parameters[2] - yaw_prior))
+            if planar:
+                yaw = parameters[2]
+            else:
+                rotation, _ = cv2.Rodrigues(parameters[3:6])
+                yaw = numpy.arctan2(rotation[1, 0], rotation[0, 0])
+            delta = numpy.arctan2(numpy.sin(yaw - yaw_prior),
+                                 numpy.cos(yaw - yaw_prior))
             return numpy.append(pixels, delta * prior_weight)
 
         best_parameters = None
@@ -414,7 +569,7 @@ class MultiTargetCameraPoseEstimator:
         solver_failures = []
         for seed in seeds:
             try:
-                # LM adjusts the three planar pose numbers to reduce the pixel residuals.
+                # LM adjusts the selected pose parameters to reduce the residuals.
                 # `2-point` estimates the Jacobian by slightly perturbing each
                 # parameter; `x_scale="jac"` balances meters and radians.
                 result = least_squares(
@@ -423,14 +578,41 @@ class MultiTargetCameraPoseEstimator:
                     method="lm",
                     jac="2-point",
                     x_scale="jac",
-                    max_nfev=200,
+                    max_nfev=self.OPTIMIZER_MAX_NFEV,
+                    ftol=self.OPTIMIZER_TOLERANCE,
+                    xtol=self.OPTIMIZER_TOLERANCE,
+                    gtol=self.OPTIMIZER_TOLERANCE,
                 )
             except (ValueError, cv2.error, numpy.linalg.LinAlgError) as error:
                 solver_failures.append(str(error))
                 continue
             # Compare seeds using image error plus the optional yaw prior. Keep only a
             # converged finite solution with the lowest joint reprojection cost.
-            cost = float(result.fun @ result.fun)
+            if use_robust and result.success:
+                try:
+                    def corner_loss(z):
+                        rho = numpy.vstack((2 * (numpy.sqrt(1 + z) - 1),
+                                            1 / numpy.sqrt(1 + z),
+                                            -0.5 / (1 + z)**1.5))
+                        # The gyro prior remains Gaussian, not robustified.
+                        if yaw_prior is not None:
+                            rho[:, -1] = [z[-1], 1.0, 0.0]
+                        return rho
+                    refined = least_squares(
+                        residual, result.x, method="trf", loss=corner_loss,
+                        f_scale=self.ROBUST_CORNER_SCALE_PX, x_scale="jac", max_nfev=100)
+                    if refined.success and numpy.isfinite(refined.fun).all():
+                        result = refined
+                except (ValueError, cv2.error, numpy.linalg.LinAlgError):
+                    pass
+            if use_robust:
+                pixels = pixel_residual(result.x)
+                scale = self.ROBUST_CORNER_SCALE_PX
+                cost = float(numpy.sum(2 * scale**2 * (numpy.sqrt(1 + (pixels/scale)**2) - 1)))
+                if yaw_prior is not None:
+                    cost += float(result.fun[-1]**2)
+            else:
+                cost = float(result.fun @ result.fun)
             if result.success and numpy.isfinite(cost) and cost < best_cost:
                 best_parameters, best_cost = result.x, cost
             elif not result.success or not numpy.isfinite(cost):
@@ -440,8 +622,21 @@ class MultiTargetCameraPoseEstimator:
             return self._pose_failed(
                 "No converged finite pose solution: " + "; ".join(solver_failures)
             )
-        robot_pose = Pose3d(Translation3d(best_parameters[0], best_parameters[1], 0.0),
-                            Rotation3d(0.0, 0.0, best_parameters[2]))
+        if planar:
+            robot_pose = Pose3d(Translation3d(best_parameters[0], best_parameters[1], 0.0),
+                               Rotation3d(0.0, 0.0, best_parameters[2]))
+        else:
+            solved_matrix = numpy.eye(4)
+            solved_matrix[:3, :3] = cv2.Rodrigues(best_parameters[3:6])[0]
+            solved_matrix[:3, 3] = best_parameters[:3]
+            robot_pose = _pose_from_matrix(solved_matrix)
+        robot_matrix = _pose_matrix(robot_pose)
+        for camera in camera_data:
+            camera_matrix = robot_matrix @ camera["robot_to_camera"]
+            points = ((camera["field_points"] - camera_matrix[:3, 3])
+                      @ camera_matrix[:3, :3] @ _WPILIB_TO_OPENCV.T)
+            if not numpy.isfinite(points).all() or numpy.any(points[:, 2] <= 1e-6):
+                return self._pose_failed("Pose projects observed corners behind the camera")
         point_count = sum(camera["image_points"].shape[0] for camera in camera_data)
         # RMS is the typical 2D corner error in pixels: sum(dx²+dy²) divided
         # by the number of corners, then square-rooted.
