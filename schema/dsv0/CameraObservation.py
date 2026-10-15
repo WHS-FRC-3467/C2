@@ -36,7 +36,7 @@ class CameraObservation(object):
             return obj
         return None
 
-    # Alternate pose solution (present for single-tag ambiguity)
+    # Alternate pose solution (only for single-tag observations, which are ambiguous)
     # CameraObservation
     def Solution1(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
@@ -76,21 +76,38 @@ class CameraObservation(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         return o == 0
 
-def CameraObservationStart(builder): builder.StartObject(3)
+def CameraObservationStart(builder):
+    builder.StartObject(3)
+
 def Start(builder):
-    return CameraObservationStart(builder)
-def CameraObservationAddSolution0(builder, solution0): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(solution0), 0)
+    CameraObservationStart(builder)
+
+def CameraObservationAddSolution0(builder, solution0):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(solution0), 0)
+
 def AddSolution0(builder, solution0):
-    return CameraObservationAddSolution0(builder, solution0)
-def CameraObservationAddSolution1(builder, solution1): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(solution1), 0)
+    CameraObservationAddSolution0(builder, solution0)
+
+def CameraObservationAddSolution1(builder, solution1):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(solution1), 0)
+
 def AddSolution1(builder, solution1):
-    return CameraObservationAddSolution1(builder, solution1)
-def CameraObservationAddTagIds(builder, tagIds): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(tagIds), 0)
+    CameraObservationAddSolution1(builder, solution1)
+
+def CameraObservationAddTagIds(builder, tagIds):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(tagIds), 0)
+
 def AddTagIds(builder, tagIds):
-    return CameraObservationAddTagIds(builder, tagIds)
-def CameraObservationStartTagIdsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def StartTagIdsVector(builder, numElems):
+    CameraObservationAddTagIds(builder, tagIds)
+
+def CameraObservationStartTagIdsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartTagIdsVector(builder, numElems: int) -> int:
     return CameraObservationStartTagIdsVector(builder, numElems)
-def CameraObservationEnd(builder): return builder.EndObject()
+
+def CameraObservationEnd(builder):
+    return builder.EndObject()
+
 def End(builder):
     return CameraObservationEnd(builder)

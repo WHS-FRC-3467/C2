@@ -6,6 +6,7 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
+# WPILib coordinates (field frame: +X downfield, +Z up)
 class Pose3d(object):
     __slots__ = ['_tab']
 

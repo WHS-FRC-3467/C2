@@ -1,7 +1,9 @@
 {
     "python.analysis.extraPaths": [
+        "./src",
         "./schema"
     ],
-    "cmake.sourceDirectory": "./aruco_nano",
+    "cmake.sourceDirectory": "${workspaceFolder}/src/pipelines/apriltag/aruco_nano",
+    "cmake.buildDirectory": "${workspaceFolder}/src/pipelines/apriltag/aruco_nano/build",
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
 }

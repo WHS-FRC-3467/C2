@@ -6,7 +6,6 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
-# Results from one camera; field-to-camera
 class CameraOutput(object):
     __slots__ = ['_tab']
 
@@ -28,7 +27,7 @@ class CameraOutput(object):
     # Camera index within the multi-camera module
     # CameraOutput
     def CameraIndex(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
         return 0
@@ -36,7 +35,7 @@ class CameraOutput(object):
     # Field-relative camera pose observation (null if no tags seen)
     # CameraOutput
     def CameraObservation(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from dsv0.CameraObservation import CameraObservation
@@ -45,26 +44,40 @@ class CameraOutput(object):
             return obj
         return None
 
-    # Frames per second (0 if not reported this cycle)
+    # Pipeline frames per second (0 if not reported this cycle)
     # CameraOutput
     def Fps(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
         return 0
 
-def CameraOutputStart(builder): builder.StartObject(3)
+def CameraOutputStart(builder):
+    builder.StartObject(4)
+
 def Start(builder):
-    return CameraOutputStart(builder)
-def CameraOutputAddCameraIndex(builder, cameraIndex): builder.PrependInt32Slot(0, cameraIndex, 0)
+    CameraOutputStart(builder)
+
+def CameraOutputAddCameraIndex(builder, cameraIndex):
+    builder.PrependInt32Slot(1, cameraIndex, 0)
+
 def AddCameraIndex(builder, cameraIndex):
-    return CameraOutputAddCameraIndex(builder, cameraIndex)
-def CameraOutputAddCameraObservation(builder, cameraObservation): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(cameraObservation), 0)
+    CameraOutputAddCameraIndex(builder, cameraIndex)
+
+def CameraOutputAddCameraObservation(builder, cameraObservation):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(cameraObservation), 0)
+
 def AddCameraObservation(builder, cameraObservation):
-    return CameraOutputAddCameraObservation(builder, cameraObservation)
-def CameraOutputAddFps(builder, fps): builder.PrependInt32Slot(2, fps, 0)
+    CameraOutputAddCameraObservation(builder, cameraObservation)
+
+def CameraOutputAddFps(builder, fps):
+    builder.PrependInt32Slot(3, fps, 0)
+
 def AddFps(builder, fps):
-    return CameraOutputAddFps(builder, fps)
-def CameraOutputEnd(builder): return builder.EndObject()
+    CameraOutputAddFps(builder, fps)
+
+def CameraOutputEnd(builder):
+    return builder.EndObject()
+
 def End(builder):
     return CameraOutputEnd(builder)

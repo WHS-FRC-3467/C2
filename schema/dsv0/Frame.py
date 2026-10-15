@@ -6,7 +6,7 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
-# Top-level message containing results from all cameras in a single frame
+# One message per camera per frame
 class Frame(object):
     __slots__ = ['_tab']
 
@@ -25,33 +25,52 @@ class Frame(object):
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
+    # Per-camera results (one entry: this topic's camera)
     # Frame
-    def ResultsType(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
-        if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Uint8Flags, o + self._tab.Pos)
-        return 0
-
-    # Either per-camera or combined results
-    # Frame
-    def Results(self):
+    def Cameras(self, j):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
-            from flatbuffers.table import Table
-            obj = Table(bytearray(), 0)
-            self._tab.Union(obj, o)
+            x = self._tab.Vector(o)
+            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
+            x = self._tab.Indirect(x)
+            from dsv0.CameraOutput import CameraOutput
+            obj = CameraOutput()
+            obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-def FrameStart(builder): builder.StartObject(2)
+    # Frame
+    def CamerasLength(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        if o != 0:
+            return self._tab.VectorLen(o)
+        return 0
+
+    # Frame
+    def CamerasIsNone(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        return o == 0
+
+def FrameStart(builder):
+    builder.StartObject(2)
+
 def Start(builder):
-    return FrameStart(builder)
-def FrameAddResultsType(builder, resultsType): builder.PrependUint8Slot(0, resultsType, 0)
-def AddResultsType(builder, resultsType):
-    return FrameAddResultsType(builder, resultsType)
-def FrameAddResults(builder, results): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(results), 0)
-def AddResults(builder, results):
-    return FrameAddResults(builder, results)
-def FrameEnd(builder): return builder.EndObject()
+    FrameStart(builder)
+
+def FrameAddCameras(builder, cameras):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(cameras), 0)
+
+def AddCameras(builder, cameras):
+    FrameAddCameras(builder, cameras)
+
+def FrameStartCamerasVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartCamerasVector(builder, numElems: int) -> int:
+    return FrameStartCamerasVector(builder, numElems)
+
+def FrameEnd(builder):
+    return builder.EndObject()
+
 def End(builder):
     return FrameEnd(builder)
