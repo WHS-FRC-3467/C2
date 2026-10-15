@@ -34,7 +34,6 @@ python src/main.py                # run from the repo root (config.json and cali
 | `web_port` | web dashboard (see below) |
 | `num_cameras` | cameras side by side in the module's frame |
 | `camera_id`, `camera_resolution_width/height`, `camera_exposure`, `camera_gain` | capture defaults until the robot publishes `/<dev>/config/*`. Width is per camera |
-| `pipelines_enabled` | default `enabled` per pipeline, e.g. `{"apriltag": true}` |
 | `time_sync_probe_interval_s` | see [Timestamps](#timestamps). Default 10, 0 disables |
 
 Per-camera intrinsics come from `calibration_<i>.yml` in the directory C2 is started from (`--calibration-dir` to change). Make them with the [calibration tool](#camera-calibration) in the dashboard.
@@ -211,7 +210,7 @@ Everything lives under `/<device_id>` (`/dsv0` below).
 | `/dsv0/config/camera_resolution_height` | int | robot | |
 | `/dsv0/config/camera_exposure` | int | robot | |
 | `/dsv0/config/camera_gain` | int | robot | |
-| `/dsv0/pipelines/<name>/enabled` | bool | robot/dashboard | run this pipeline |
+| `/dsv0/pipelines/<name>/enabled` | bool | robot | run this pipeline (only while the robot publishes `true`) |
 | `/dsv0/pipelines/<name>/config/<field>` | per field | robot/dashboard | one topic per settings field |
 | `/dsv0/pipelines/<name>/output/<output>` | raw (flatbuffer) | C2 | results, NT-timestamped with capture time |
 | `/dsv0/pipelines/<name>/status/active` | bool | C2 | enabled and running without errors |
@@ -223,10 +222,15 @@ Everything lives under `/<device_id>` (`/dsv0` below).
 | `/dsv0/status/camera_<i>/connected` | bool | C2 | camera *i* is delivering images: a frame within 0.5 s and its image isn't perfectly uniform (a dead sensor outputs a flat image) |
 | `/dsv0/status/time_sync/*` | int | C2 | `connection_offset_us`, `probe_offset_us`, `probe_rtt2_us`, `correction_us` |
 
-C2 publishes defaults for `enabled` and `config/*` with `setDefault`, so they
-appear in dashboards (AdvantageScope, Elastic, OutlineViewer) and can be edited
-live. Anything the robot or a dashboard publishes always wins over C2's
-default, even if C2 restarts afterwards.
+Pipelines are opt-in from robot code: none run until the robot publishes
+`enabled = true`, and C2 never publishes `enabled` itself. When the robot stops
+publishing it (robot code restarts, or the connection drops), the pipeline is
+shut down until the robot enables it again.
+
+C2 publishes defaults for `config/*` with `setDefault`, so they appear in
+dashboards (AdvantageScope, Elastic, OutlineViewer) and can be edited live.
+Anything the robot or a dashboard publishes always wins over C2's default, even
+if C2 restarts afterwards.
 
 ### `apriltag` pipeline
 

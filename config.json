@@ -5,8 +5,5 @@
   "num_cameras": 4,
   "camera_id": "0",
   "camera_resolution_width": 1600,
-  "camera_resolution_height": 1304,
-  "pipelines_enabled": {
-    "apriltag": true
-  }
+  "camera_resolution_height": 1304
 }

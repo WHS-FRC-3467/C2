@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -51,15 +51,18 @@ class LocalConfig:
     time_sync_probe_interval_s: float = 10.0
     """How often to re-measure the robot clock offset (see core/time_sync.py). 0 disables."""
 
-    pipelines_enabled: dict[str, bool] = field(default_factory=dict)
-    """Per-pipeline enabled default, used until NT says otherwise, e.g. {"apriltag": true}."""
-
     calibrations: tuple[CameraCalibration | None, ...] = ()
     """Indexed by camera index. None if calibration_<i>.yml is missing or invalid."""
 
 
 def load_local_config(config_path: Path, calibration_dir: Path) -> LocalConfig:
     data = json.loads(config_path.read_text())
+    if "pipelines_enabled" in data:
+        log.warning(
+            "%s: pipelines_enabled is no longer used; the robot enables pipelines "
+            "by publishing /<device_id>/pipelines/<name>/enabled",
+            config_path,
+        )
     num_cameras = int(data.get("num_cameras", 4))
     return LocalConfig(
         device_id=data["device_id"],
@@ -72,9 +75,6 @@ def load_local_config(config_path: Path, calibration_dir: Path) -> LocalConfig:
         camera_exposure=int(data.get("camera_exposure", 0)),
         camera_gain=int(data.get("camera_gain", 0)),
         time_sync_probe_interval_s=float(data.get("time_sync_probe_interval_s", 10.0)),
-        pipelines_enabled={
-            name: bool(v) for name, v in data.get("pipelines_enabled", {}).items()
-        },
         calibrations=tuple(
             _load_calibration(calibration_dir / f"calibration_{i}.yml")
             for i in range(num_cameras)

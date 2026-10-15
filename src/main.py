@@ -79,10 +79,7 @@ def build_pipelines(
         context = PipelineContext(
             inst, config.device_id, pipeline_type.NAME, calibrations, time_sync
         )
-        enabled = config.pipelines_enabled.get(pipeline_type.NAME, False)
-        runners.append(
-            PipelineRunner(pipeline_type, context, enabled_by_default=enabled)
-        )
+        runners.append(PipelineRunner(pipeline_type, context))
     return PipelineManager(runners)
 
 

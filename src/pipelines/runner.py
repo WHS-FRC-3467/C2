@@ -10,8 +10,13 @@ NT layout for a pipeline named <name> on device <dev>:
     /<dev>/pipelines/<name>/status/latency_ms double  capture -> results published
     /<dev>/pipelines/<name>/status/error      string  last exception, "" if none
 
-``enabled`` and ``config/*`` get defaults via setDefault, so the robot (or a
-dashboard) can override them at any time.
+Pipelines are opt-in: C2 only reads ``enabled``, and a pipeline runs only
+while the robot publishes ``enabled = true``. When the robot stops publishing
+it (robot code restarted, or the connection dropped), it reads false again and
+the pipeline is shut down.
+
+``config/*`` get defaults via setDefault, so the robot (or a dashboard) can
+override them at any time.
 """
 
 from __future__ import annotations
@@ -40,15 +45,14 @@ class PipelineRunner:
         self,
         pipeline_type: type[Pipeline],
         context: PipelineContext,
-        enabled_by_default: bool,
     ) -> None:
         self.name = pipeline_type.NAME
         self._type = pipeline_type
         self._context = context
         table = context.inst.getTable(context.table_path)
 
-        self._enabled = table.getBooleanTopic("enabled").getEntry(enabled_by_default)
-        self._enabled.setDefault(enabled_by_default)
+        # Subscribe only: false unless the robot is publishing true right now.
+        self._enabled = table.getBooleanTopic("enabled").subscribe(False)
         self._settings = NTSettings(
             context.inst, f"{context.table_path}/config", pipeline_type.SETTINGS
         )
