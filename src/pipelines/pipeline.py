@@ -107,7 +107,9 @@ class PipelineContext:
         it is enabled), so subscribers on the robot never see the topic vanish.
         """
         if name not in self._outputs:
-            self._outputs[name] = FlatbufferPublisher(self.inst, f"{self.table_path}/output/{name}", type_string)
+            self._outputs[name] = FlatbufferPublisher(
+                self.inst, f"{self.table_path}/output/{name}", type_string
+            )
         return self._outputs[name]
 
 

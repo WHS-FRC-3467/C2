@@ -71,7 +71,11 @@ class MultiCameraCapture:
         """Apply new settings. Reopens the camera if the device or resolution changed."""
         old = self._settings
         self._settings = settings
-        if old is None or (old.camera_id, old.camera_resolution_width, old.camera_resolution_height) != (
+        if old is None or (
+            old.camera_id,
+            old.camera_resolution_width,
+            old.camera_resolution_height,
+        ) != (
             settings.camera_id,
             settings.camera_resolution_width,
             settings.camera_resolution_height,
@@ -105,13 +109,17 @@ class MultiCameraCapture:
 
         self._sequence += 1
         self._frame_size = (image.shape[1], image.shape[0])
-        return FrameSet.from_combined(self._sequence, self._capture_time_us(read_end), image, self._num_cameras)
+        return FrameSet.from_combined(
+            self._sequence, self._capture_time_us(read_end), image, self._num_cameras
+        )
 
     # --------------------------------------------------------------- private
 
     def _capture_time_us(self, read_end_monotonic_s: float) -> int:
         """When the frame was captured, in the NT time base."""
-        buffer_ms = self._video.get(cv2.CAP_PROP_POS_MSEC) if self._video is not None else 0.0
+        buffer_ms = (
+            self._video.get(cv2.CAP_PROP_POS_MSEC) if self._video is not None else 0.0
+        )
         if buffer_ms > 0:
             age_s = time.monotonic() - buffer_ms / 1000.0
             if 0.0 <= age_s <= self.MAX_BUFFER_AGE_S:
@@ -132,9 +140,17 @@ class MultiCameraCapture:
         total_width = settings.camera_resolution_width * self._num_cameras
         height = settings.camera_resolution_height
         log.info(
-            "Opening camera %s (%d cameras, %dx%d)", settings.camera_id, self._num_cameras, total_width, height
+            "Opening camera %s (%d cameras, %dx%d)",
+            settings.camera_id,
+            self._num_cameras,
+            total_width,
+            height,
         )
-        device: int | str = int(settings.camera_id) if settings.camera_id.isdigit() else settings.camera_id
+        device: int | str = (
+            int(settings.camera_id)
+            if settings.camera_id.isdigit()
+            else settings.camera_id
+        )
         video = cv2.VideoCapture(device, cv2.CAP_V4L2)
         video.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"GREY"))
         video.set(cv2.CAP_PROP_CONVERT_RGB, 0)
@@ -184,10 +200,14 @@ class MultiCameraCapture:
 def _v4l2_set(device: str, control: str, value: int) -> None:
     try:
         result = subprocess.run(
-            ["v4l2-ctl", "-d", device, "--set-ctrl", f"{control}={value}"], capture_output=True, text=True
+            ["v4l2-ctl", "-d", device, "--set-ctrl", f"{control}={value}"],
+            capture_output=True,
+            text=True,
         )
     except FileNotFoundError:
-        log.error("v4l2-ctl not installed; can't set %s (apt install v4l-utils)", control)
+        log.error(
+            "v4l2-ctl not installed; can't set %s (apt install v4l-utils)", control
+        )
         return
     if result.returncode != 0:
         log.error("v4l2-ctl %s=%d failed: %s", control, value, result.stderr.strip())

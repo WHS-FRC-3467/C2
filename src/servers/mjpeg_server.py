@@ -27,7 +27,12 @@ class MjpegStream:
         self._lock = threading.Lock()
         self._cache: dict[int | None, tuple[int, bytes]] = {}
 
-    def serve(self, handler: BaseHTTPRequestHandler, width: int | None = None, max_fps: float | None = None) -> None:
+    def serve(
+        self,
+        handler: BaseHTTPRequestHandler,
+        width: int | None = None,
+        max_fps: float | None = None,
+    ) -> None:
         """Stream to ``handler`` until the client disconnects.
 
         ``width`` downscales (keeping the aspect ratio) to save bandwidth;
@@ -52,14 +57,17 @@ class MjpegStream:
                 last_sequence, data = frame
                 last_sent_s = time.monotonic()
                 handler.wfile.write(
-                    b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n" % len(data)
+                    b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n"
+                    % len(data)
                 )
                 handler.wfile.write(data)
                 handler.wfile.write(b"\r\n")
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _jpeg_after(self, last_sequence: int, width: int | None) -> tuple[int, bytes] | None:
+    def _jpeg_after(
+        self, last_sequence: int, width: int | None
+    ) -> tuple[int, bytes] | None:
         """The newest frame as JPEG at ``width``, if it is newer than ``last_sequence``."""
         with self._lock:
             cached = self._cache.get(width)
@@ -72,7 +80,9 @@ class MjpegStream:
             if width is not None and 0 < width < image.shape[1]:
                 height = max(1, round(image.shape[0] * width / image.shape[1]))
                 image = cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
-            ok, jpeg = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, self._quality])
+            ok, jpeg = cv2.imencode(
+                ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, self._quality]
+            )
             if not ok:
                 return None
             self._cache[width] = (sequence, jpeg.tobytes())

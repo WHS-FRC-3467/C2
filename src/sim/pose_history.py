@@ -43,5 +43,17 @@ class PoseHistory:
         # Same as WPILib's Pose3d.interpolate: move along the twist between them.
         twist = p0.log(p1)
         return p0.exp(
-            Twist3d(*(fraction * v for v in (twist.dx, twist.dy, twist.dz, twist.rx, twist.ry, twist.rz)))
+            Twist3d(
+                *(
+                    fraction * v
+                    for v in (
+                        twist.dx,
+                        twist.dy,
+                        twist.dz,
+                        twist.rx,
+                        twist.ry,
+                        twist.rz,
+                    )
+                )
+            )
         )

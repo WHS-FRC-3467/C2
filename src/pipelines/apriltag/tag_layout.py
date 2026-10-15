@@ -24,7 +24,10 @@ def parse_tag_layout(layout_json: str, tag_size_m: float) -> dict[int, FieldTag]
     """Return tags by ID. Raises ValueError on malformed JSON."""
     try:
         layout = json.loads(layout_json)
-        return {int(tag["ID"]): _field_tag(_pose_from_json(tag["pose"]), tag_size_m) for tag in layout["tags"]}
+        return {
+            int(tag["ID"]): _field_tag(_pose_from_json(tag["pose"]), tag_size_m)
+            for tag in layout["tags"]
+        }
     except (KeyError, TypeError, json.JSONDecodeError) as e:
         raise ValueError(f"Invalid tag layout: {e}") from e
 
@@ -32,7 +35,10 @@ def parse_tag_layout(layout_json: str, tag_size_m: float) -> dict[int, FieldTag]
 def _pose_from_json(pose: dict) -> Pose3d:
     t = pose["translation"]
     q = pose["rotation"]["quaternion"]
-    return Pose3d(Translation3d(t["x"], t["y"], t["z"]), Rotation3d(Quaternion(q["W"], q["X"], q["Y"], q["Z"])))
+    return Pose3d(
+        Translation3d(t["x"], t["y"], t["z"]),
+        Rotation3d(Quaternion(q["W"], q["X"], q["Y"], q["Z"])),
+    )
 
 
 def _field_tag(pose: Pose3d, size_m: float) -> FieldTag:
@@ -45,7 +51,9 @@ def _field_tag(pose: Pose3d, size_m: float) -> FieldTag:
     # tests/test_apriltag_pipeline.py checks this with rendered official tags.
     offsets = [(half, -half), (-half, -half), (-half, half), (half, half)]
     corners = [
-        wpilib_translation_to_opencv((pose + Transform3d(Translation3d(0, y, z), Rotation3d())).translation())
+        wpilib_translation_to_opencv(
+            (pose + Transform3d(Translation3d(0, y, z), Rotation3d())).translation()
+        )
         for y, z in offsets
     ]
     return FieldTag(pose, numpy.array(corners, dtype=numpy.float64))

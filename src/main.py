@@ -28,8 +28,15 @@ import ntcore  # noqa: E402
 import numpy  # noqa: E402
 
 from capture.capture import Capture  # noqa: E402
-from capture.multi_camera_capture import CaptureSettings, MultiCameraCapture  # noqa: E402
-from config.local_config import CameraCalibration, LocalConfig, load_local_config  # noqa: E402
+from capture.multi_camera_capture import (
+    CaptureSettings,
+    MultiCameraCapture,
+)  # noqa: E402
+from config.local_config import (
+    CameraCalibration,
+    LocalConfig,
+    load_local_config,
+)  # noqa: E402
 from core.log_buffer import LogBuffer  # noqa: E402
 from core.nt_settings import NTSettings  # noqa: E402
 from core.status import StatusPublisher  # noqa: E402
@@ -64,9 +71,13 @@ def build_pipelines(
 ) -> PipelineManager:
     runners = []
     for pipeline_type in PIPELINE_TYPES:
-        context = PipelineContext(inst, config.device_id, pipeline_type.NAME, config.calibrations, time_sync)
+        context = PipelineContext(
+            inst, config.device_id, pipeline_type.NAME, config.calibrations, time_sync
+        )
         enabled = config.pipelines_enabled.get(pipeline_type.NAME, False)
-        runners.append(PipelineRunner(pipeline_type, context, enabled_by_default=enabled))
+        runners.append(
+            PipelineRunner(pipeline_type, context, enabled_by_default=enabled)
+        )
     return PipelineManager(runners)
 
 
@@ -76,8 +87,13 @@ def with_simulated_calibrations(config: LocalConfig) -> LocalConfig:
     calibrations = []
     for i, calibration in enumerate(config.calibrations):
         if calibration is None:
-            log.info("Simulation: camera %d has no calibration; using a default 70 deg pinhole", i)
-            calibration = CameraCalibration(default_intrinsics(width, height), numpy.zeros((1, 5)), width, height)
+            log.info(
+                "Simulation: camera %d has no calibration; using a default 70 deg pinhole",
+                i,
+            )
+            calibration = CameraCalibration(
+                default_intrinsics(width, height), numpy.zeros((1, 5)), width, height
+            )
         calibrations.append(calibration)
     return dataclasses.replace(config, calibrations=tuple(calibrations))
 
@@ -103,8 +119,13 @@ def run(config: LocalConfig, logs: LogBuffer, simulate: bool) -> None:
     )
     capture: Capture
     if simulate:
-        log.info("SIMULATION MODE: rendering cameras from /%s/sim/true_pose", config.device_id)
-        capture = SimulatedCapture(inst, config.device_id, config.num_cameras, config.calibrations, time_sync)
+        log.info(
+            "SIMULATION MODE: rendering cameras from /%s/sim/true_pose",
+            config.device_id,
+        )
+        capture = SimulatedCapture(
+            inst, config.device_id, config.num_cameras, config.calibrations, time_sync
+        )
     else:
         capture = MultiCameraCapture(config.num_cameras)
 
@@ -112,7 +133,9 @@ def run(config: LocalConfig, logs: LogBuffer, simulate: bool) -> None:
     pipelines.start()
 
     streams = DebugStreams(config.num_cameras, pipelines.overlays)
-    DashboardServer(config, inst, time_sync, status, capture, pipelines, streams, logs).start()
+    DashboardServer(
+        config, inst, time_sync, status, capture, pipelines, streams, logs
+    ).start()
 
     while True:
         settings = capture_settings.poll()
@@ -130,10 +153,16 @@ def run(config: LocalConfig, logs: LogBuffer, simulate: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--config", type=Path, default=Path("config.json"))
     parser.add_argument("--calibration-dir", type=Path, default=Path("."))
-    parser.add_argument("--sim", action="store_true", help="simulate the cameras (see src/sim/simulated_capture.py)")
+    parser.add_argument(
+        "--sim",
+        action="store_true",
+        help="simulate the cameras (see src/sim/simulated_capture.py)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 

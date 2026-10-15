@@ -14,7 +14,9 @@ from pipelines.apriltag.pose_solver import CameraPoseObservation, PoseSolution
 TYPE_STRING = "dsv0_fb"
 
 
-def encode_camera_frame(camera_index: int, observation: CameraPoseObservation | None, fps: int) -> bytes:
+def encode_camera_frame(
+    camera_index: int, observation: CameraPoseObservation | None, fps: int
+) -> bytes:
     """One ``Frame`` holding one ``CameraOutput``. The capture time travels as the NT value timestamp."""
     builder = flatbuffers.Builder(256)
 
@@ -39,9 +41,15 @@ def encode_camera_frame(camera_index: int, observation: CameraPoseObservation | 
     return bytes(builder.Output())
 
 
-def _build_observation(builder: flatbuffers.Builder, observation: CameraPoseObservation) -> int:
+def _build_observation(
+    builder: flatbuffers.Builder, observation: CameraPoseObservation
+) -> int:
     best = _build_solution(builder, observation.best)
-    alternate = _build_solution(builder, observation.alternate) if observation.alternate else None
+    alternate = (
+        _build_solution(builder, observation.alternate)
+        if observation.alternate
+        else None
+    )
 
     CO.StartTagIdsVector(builder, len(observation.tag_ids))
     for tag_id in reversed(observation.tag_ids):
@@ -61,6 +69,8 @@ def _build_solution(builder: flatbuffers.Builder, solution: PoseSolution) -> int
     q = solution.field_to_camera.rotation().getQuaternion()
     PS.Start(builder)
     # Structs must be created right before they are added to their table.
-    PS.AddPose(builder, CreatePose3d(builder, t.X(), t.Y(), t.Z(), q.W(), q.X(), q.Y(), q.Z()))
+    PS.AddPose(
+        builder, CreatePose3d(builder, t.X(), t.Y(), t.Z(), q.W(), q.X(), q.Y(), q.Z())
+    )
     PS.AddError(builder, solution.reprojection_error)
     return PS.End(builder)

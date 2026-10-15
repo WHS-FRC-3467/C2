@@ -39,12 +39,17 @@ def solve_camera_pose(
     if not known:
         return None
     if len(known) == 1:
-        return _solve_single_tag(known[0], layout[known[0].tag_id], tag_size_m, calibration)
+        return _solve_single_tag(
+            known[0], layout[known[0].tag_id], tag_size_m, calibration
+        )
     return _solve_multi_tag(known, layout, calibration)
 
 
 def _solve_single_tag(
-    detection: TagDetection, tag: FieldTag, tag_size_m: float, calibration: CameraCalibration
+    detection: TagDetection,
+    tag: FieldTag,
+    tag_size_m: float,
+    calibration: CameraCalibration,
 ) -> CameraPoseObservation | None:
     """IPPE_SQUARE returns both candidate poses of a lone square; report both."""
     half = tag_size_m / 2.0
@@ -66,18 +71,26 @@ def _solve_single_tag(
     solutions = []
     for rvec, tvec, error in zip(rvecs, tvecs, errors):
         camera_to_tag = opencv_pose_to_wpilib(tvec, rvec)
-        tag_to_camera = Transform3d(camera_to_tag.translation(), camera_to_tag.rotation()).inverse()
-        solutions.append(PoseSolution(tag.pose.transformBy(tag_to_camera), float(error[0])))
+        tag_to_camera = Transform3d(
+            camera_to_tag.translation(), camera_to_tag.rotation()
+        ).inverse()
+        solutions.append(
+            PoseSolution(tag.pose.transformBy(tag_to_camera), float(error[0]))
+        )
     return CameraPoseObservation(
         [detection.tag_id], solutions[0], solutions[1] if len(solutions) > 1 else None
     )
 
 
 def _solve_multi_tag(
-    detections: list[TagDetection], layout: dict[int, FieldTag], calibration: CameraCalibration
+    detections: list[TagDetection],
+    layout: dict[int, FieldTag],
+    calibration: CameraCalibration,
 ) -> CameraPoseObservation | None:
     """SQPNP over every corner of every tag gives one unambiguous pose."""
-    object_points = numpy.concatenate([layout[d.tag_id].corners_opencv for d in detections])
+    object_points = numpy.concatenate(
+        [layout[d.tag_id].corners_opencv for d in detections]
+    )
     image_points = numpy.concatenate([d.corners for d in detections])
     try:
         _, rvecs, tvecs, errors = cv2.solvePnPGeneric(
@@ -92,9 +105,14 @@ def _solve_multi_tag(
 
     # solvePnP gives camera-to-field; invert for field-to-camera.
     camera_to_field = opencv_pose_to_wpilib(tvecs[0], rvecs[0])
-    field_to_camera = Transform3d(camera_to_field.translation(), camera_to_field.rotation()).inverse()
+    field_to_camera = Transform3d(
+        camera_to_field.translation(), camera_to_field.rotation()
+    ).inverse()
     return CameraPoseObservation(
         [d.tag_id for d in detections],
-        PoseSolution(Pose3d(field_to_camera.translation(), field_to_camera.rotation()), float(errors[0][0])),
+        PoseSolution(
+            Pose3d(field_to_camera.translation(), field_to_camera.rotation()),
+            float(errors[0][0]),
+        ),
         None,
     )

@@ -23,7 +23,12 @@ class LogBuffer(logging.Handler):
             return
         with self._lock_records:
             self._records.append(
-                {"id": self._next_id, "time": record.created, "level": record.levelname, "message": message}
+                {
+                    "id": self._next_id,
+                    "time": record.created,
+                    "level": record.levelname,
+                    "message": message,
+                }
             )
             self._next_id += 1
 

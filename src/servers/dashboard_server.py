@@ -66,7 +66,9 @@ class DashboardServer:
 
     def start(self) -> None:
         server = _DashboardHTTPServer(self._config.web_port, self)
-        threading.Thread(target=server.serve_forever, name="dashboard", daemon=True).start()
+        threading.Thread(
+            target=server.serve_forever, name="dashboard", daemon=True
+        ).start()
         log.info("Dashboard at http://0.0.0.0:%d", self._config.web_port)
 
     # ------------------------------------------------------------------ data
@@ -75,7 +77,10 @@ class DashboardServer:
         health = self._status.snapshot()
         capture = self._capture.snapshot()
         settings = capture["settings"] or {}
-        camera_size = (settings.get("camera_resolution_width"), settings.get("camera_resolution_height"))
+        camera_size = (
+            settings.get("camera_resolution_width"),
+            settings.get("camera_resolution_height"),
+        )
         return {
             "device": {
                 "id": self._config.device_id,
@@ -119,7 +124,11 @@ class DashboardServer:
         if match is None:
             return None
         index, kind = int(match.group(1)), match.group(2)
-        streams = self._streams.annotated_cameras if kind == "stream" else self._streams.raw_cameras
+        streams = (
+            self._streams.annotated_cameras
+            if kind == "stream"
+            else self._streams.raw_cameras
+        )
         return streams[index] if index < len(streams) else None
 
 
@@ -167,7 +176,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format: str, *args) -> None:  # noqa: A002 - matches the base signature
+    def log_message(
+        self, format: str, *args
+    ) -> None:  # noqa: A002 - matches the base signature
         pass  # don't print a line per request
 
 
@@ -178,7 +189,9 @@ def _calibration_info(calibration, camera_size: tuple[int | None, int | None]) -
     return {
         "loaded": True,
         "image_size": size if all(size) else None,
-        "matches_resolution": None if not all(size) or not all(camera_size) else size == camera_size,
+        "matches_resolution": (
+            None if not all(size) or not all(camera_size) else size == camera_size
+        ),
         "reprojection_error": calibration.reprojection_error,
         "fx": float(calibration.camera_matrix[0, 0]),
         "fy": float(calibration.camera_matrix[1, 1]),

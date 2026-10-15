@@ -182,7 +182,13 @@ default, even if C2 restarts afterwards.
 
 ### `apriltag` pipeline
 
-* **Config:** `tag_layout` (string: `AprilTagFieldLayout` JSON) and `fiducial_size_m` (double).
+* **Config:** `tag_layout` (string: `AprilTagFieldLayout` JSON), `fiducial_size_m` (double), and
+  `min_tag_size_px` (double, default 0 = off): tags whose longest edge is shorter than this in
+  the image are left out of the solve, since tiny tags have noisy corners. In simulation, 50 px
+  removed the large outliers (multi-tag max error 76 cm -> under 7 cm); 25 px was worse than off.
+  Being in pixels, one value works across cameras: the distance it corresponds to is about
+  `focal_length_px * tag_size_m / min_tag_size_px` (50 px is ~4.6 m at f = 1380 px, ~6.6 m at
+  f = 2000 px). See `src/pipelines/apriltag/tag_filter.py`.
 * **Output:** `output/camera_<i>`, type string `dsv0_fb`, schema `schema/apriltag.fbs`.
   One message per camera per frame, including frames with no tags, so "nothing
   seen" can be told apart from "disconnected". It contains the field-to-camera

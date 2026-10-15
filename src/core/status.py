@@ -33,12 +33,15 @@ _UNIFORMITY_STRIDE = 8  # check every 8th pixel each way; plenty to see sensor n
 
 
 class StatusPublisher:
-    def __init__(self, inst: ntcore.NetworkTableInstance, device_id: str, num_cameras: int) -> None:
+    def __init__(
+        self, inst: ntcore.NetworkTableInstance, device_id: str, num_cameras: int
+    ) -> None:
         table = inst.getTable(f"/{device_id}/status")
         self._heartbeat_pub = table.getIntegerTopic("heartbeat").publish()
         self._fps_pub = table.getDoubleTopic("capture_fps").publish()
         self._connected_pubs = [
-            table.getSubTable(f"camera_{i}").getBooleanTopic("connected").publish() for i in range(num_cameras)
+            table.getSubTable(f"camera_{i}").getBooleanTopic("connected").publish()
+            for i in range(num_cameras)
         ]
 
         self._lock = threading.Lock()

@@ -14,7 +14,9 @@ from pathlib import Path
 import cv2
 import numpy
 
-_LIB_PATH = Path(__file__).resolve().parent / "aruco_nano" / "build" / "libaruco_nano_capi.so"
+_LIB_PATH = (
+    Path(__file__).resolve().parent / "aruco_nano" / "build" / "libaruco_nano_capi.so"
+)
 _MAX_DETECTIONS = 64
 
 
@@ -88,6 +90,8 @@ class ArucoNanoDetector:
             _MAX_DETECTIONS,
         )
         return [
-            TagDetection(r.id, numpy.array(r.corners, dtype=numpy.float64).reshape(4, 2))
+            TagDetection(
+                r.id, numpy.array(r.corners, dtype=numpy.float64).reshape(4, 2)
+            )
             for r in self._results[:count]
         ]

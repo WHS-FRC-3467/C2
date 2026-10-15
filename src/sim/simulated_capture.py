@@ -109,17 +109,28 @@ class SimulatedCapture:
         sim_table = inst.getTable(f"/{device_id}/sim")
         # periodic: NT batches values to subscribers every 100 ms by default,
         # which would deliver true poses up to 100 ms late.
+        # keepDuplicates: a stationary robot publishes the same pose every loop;
+        # without it NT drops the repeats and the pose looks stale.
         self._true_pose_sub = sim_table.getStructTopic("true_pose", Pose3d).subscribe(
-            Pose3d(), ntcore.PubSubOptions(sendAll=True, pollStorage=256, periodic=0.005)
+            Pose3d(),
+            ntcore.PubSubOptions(
+                sendAll=True, keepDuplicates=True, pollStorage=256, periodic=0.005
+            ),
         )
-        self._robot_to_camera_sub = sim_table.getStructArrayTopic("robot_to_camera", Transform3d).subscribe([])
+        self._robot_to_camera_sub = sim_table.getStructArrayTopic(
+            "robot_to_camera", Transform3d
+        ).subscribe([])
         apriltag_config = inst.getTable(f"/{device_id}/pipelines/apriltag/config")
         self._layout_sub = apriltag_config.getStringTopic("tag_layout").subscribe("")
-        self._tag_size_sub = apriltag_config.getDoubleTopic("fiducial_size_m").subscribe(0.1651)
+        self._tag_size_sub = apriltag_config.getDoubleTopic(
+            "fiducial_size_m"
+        ).subscribe(0.1651)
 
         self._poses = PoseHistory()
         self._renderer = TagRenderer()
-        self._pool = ThreadPoolExecutor(max_workers=num_cameras, thread_name_prefix="sim-render")
+        self._pool = ThreadPoolExecutor(
+            max_workers=num_cameras, thread_name_prefix="sim-render"
+        )
         self._rng = numpy.random.default_rng()
         self._layout_json = ""
         self._layout: dict[int, FieldTag] = {}
@@ -151,30 +162,46 @@ class SimulatedCapture:
                 if capture_us <= self._last_capture_us:
                     continue
             # A dropped frame is simply never delivered, like a real camera's.
-            if settings.drop_probability > 0 and self._rng.random() < settings.drop_probability:
+            if (
+                settings.drop_probability > 0
+                and self._rng.random() < settings.drop_probability
+            ):
                 continue
             break
         self._last_capture_us = capture_us
 
         images = list(
-            self._pool.map(lambda i: self._render_camera(i, capture_us, size, settings), range(self._num_cameras))
+            self._pool.map(
+                lambda i: self._render_camera(i, capture_us, size, settings),
+                range(self._num_cameras),
+            )
         )
         if settings.extra_latency_ms > 0:
             time.sleep(settings.extra_latency_ms / 1000)
 
         stamped_us = capture_us + round(
-            1000 * (settings.timestamp_error_ms + settings.timestamp_jitter_ms * self._rng.standard_normal())
+            1000
+            * (
+                settings.timestamp_error_ms
+                + settings.timestamp_jitter_ms * self._rng.standard_normal()
+            )
         )
         self._sequence += 1
         combined = numpy.hstack(images)
         self._frame_size = (combined.shape[1], combined.shape[0])
-        return FrameSet.from_combined(self._sequence, stamped_us, combined, self._num_cameras)
+        return FrameSet.from_combined(
+            self._sequence, stamped_us, combined, self._num_cameras
+        )
 
     def snapshot(self) -> dict:
         return {
             "simulated": True,
             "open": True,
-            "settings": dataclasses.asdict(self._capture_settings) if self._capture_settings else None,
+            "settings": (
+                dataclasses.asdict(self._capture_settings)
+                if self._capture_settings
+                else None
+            ),
             "combined_frame_size": self._frame_size,
             "sim_settings": dataclasses.asdict(self._settings.current),
             "warnings": list(self._warnings),
@@ -184,7 +211,11 @@ class SimulatedCapture:
 
     def _camera_size(self) -> tuple[int, int] | None:
         s = self._capture_settings
-        if s is None or s.camera_resolution_width <= 0 or s.camera_resolution_height <= 0:
+        if (
+            s is None
+            or s.camera_resolution_width <= 0
+            or s.camera_resolution_height <= 0
+        ):
             return None
         return s.camera_resolution_width, s.camera_resolution_height
 
@@ -198,7 +229,9 @@ class SimulatedCapture:
 
     def _update_inputs(self) -> None:
         for value in self._true_pose_sub.readQueue():
-            self._poses.add(self._time_sync.received_to_local_us(value.time), value.value)
+            self._poses.add(
+                self._time_sync.received_to_local_us(value.time), value.value
+            )
         layout_json = self._layout_sub.get()
         if layout_json != self._layout_json:
             self._layout_json = layout_json
@@ -211,19 +244,29 @@ class SimulatedCapture:
 
         warnings = []
         if self._poses.latest_time_us is None:
-            warnings.append("No true pose yet: publish Pose3d to /<dev>/sim/true_pose from the robot sim.")
+            warnings.append(
+                "No true pose yet: publish Pose3d to /<dev>/sim/true_pose from the robot sim."
+            )
         elif nt_now_us() - self._poses.latest_time_us > 500_000:
-            warnings.append("True pose is stale (>0.5 s old): is the robot sim running?")
+            warnings.append(
+                "True pose is stale (>0.5 s old): is the robot sim running?"
+            )
         if len(self._robot_to_camera_sub.get()) < self._num_cameras:
-            warnings.append(f"Need {self._num_cameras} camera mounts at /<dev>/sim/robot_to_camera.")
+            warnings.append(
+                f"Need {self._num_cameras} camera mounts at /<dev>/sim/robot_to_camera."
+            )
         if not self._layout:
-            warnings.append("No tag layout yet (/<dev>/pipelines/apriltag/config/tag_layout).")
+            warnings.append(
+                "No tag layout yet (/<dev>/pipelines/apriltag/config/tag_layout)."
+            )
         if warnings != self._warnings:
             for w in warnings:
                 log.warning("Simulation: %s", w)
         self._warnings = warnings
 
-    def _render_camera(self, index: int, capture_us: int, size: tuple[int, int], s: SimSettings) -> numpy.ndarray:
+    def _render_camera(
+        self, index: int, capture_us: int, size: tuple[int, int], s: SimSettings
+    ) -> numpy.ndarray:
         width, height = size
         camera = self._true_camera_model(index, width, height, s)
         mounts = self._robot_to_camera_sub.get()
@@ -231,19 +274,33 @@ class SimulatedCapture:
 
         # Motion blur: average renders across the exposure window, centered on the capture time.
         samples = max(1, s.motion_blur_samples) if s.exposure_ms > 0 else 1
-        offsets_us = [0.0] if samples == 1 else numpy.linspace(-0.5, 0.5, samples) * s.exposure_ms * 1000
+        offsets_us = (
+            [0.0]
+            if samples == 1
+            else numpy.linspace(-0.5, 0.5, samples) * s.exposure_ms * 1000
+        )
         accumulator = None
         for offset in offsets_us:
             robot = self._poses.sample(capture_us + round(offset))
             if robot is None or index >= len(mounts) or not self._layout:
-                image = self._renderer.render(camera, Pose3d(), {}, tag_size, background_seed=index)
+                image = self._renderer.render(
+                    camera, Pose3d(), {}, tag_size, background_seed=index
+                )
             else:
-                field_to_camera = robot.transformBy(mounts[index]).transformBy(self._mount_error(index, s))
-                image = self._renderer.render(camera, field_to_camera, self._layout, tag_size, index)
+                field_to_camera = robot.transformBy(mounts[index]).transformBy(
+                    self._mount_error(index, s)
+                )
+                image = self._renderer.render(
+                    camera, field_to_camera, self._layout, tag_size, index
+                )
             if samples == 1:
                 accumulator = image.astype(numpy.float32)
                 break
-            accumulator = image.astype(numpy.float32) if accumulator is None else accumulator + image
+            accumulator = (
+                image.astype(numpy.float32)
+                if accumulator is None
+                else accumulator + image
+            )
         assert accumulator is not None
         image = accumulator / len(offsets_us)
 
@@ -260,20 +317,30 @@ class SimulatedCapture:
         frame: statistically the same as fresh noise, at a tenth of the cost.
         """
         if self._noise_bank is None or self._noise_bank.shape[1:] != (height, width):
-            self._noise_bank = self._rng.standard_normal((_NOISE_BANK_SIZE, height, width), dtype=numpy.float32)
+            self._noise_bank = self._rng.standard_normal(
+                (_NOISE_BANK_SIZE, height, width), dtype=numpy.float32
+            )
         frame = self._noise_bank[self._rng.integers(_NOISE_BANK_SIZE)]
-        return numpy.roll(frame, (self._rng.integers(height), self._rng.integers(width)), axis=(0, 1))
+        return numpy.roll(
+            frame, (self._rng.integers(height), self._rng.integers(width)), axis=(0, 1)
+        )
 
-    def _true_camera_model(self, index: int, width: int, height: int, s: SimSettings) -> CameraModel:
+    def _true_camera_model(
+        self, index: int, width: int, height: int, s: SimSettings
+    ) -> CameraModel:
         """The camera as it really is: its calibration, plus the simulated calibration error."""
-        calibration = self._calibrations[index] if index < len(self._calibrations) else None
+        calibration = (
+            self._calibrations[index] if index < len(self._calibrations) else None
+        )
         if calibration is not None:
             k = calibration.camera_matrix.astype(numpy.float64).copy()
             distortion = calibration.distortion_coefficients.astype(numpy.float64)
         else:
             k, distortion = default_intrinsics(width, height), numpy.zeros((1, 5))
         if s.focal_error_percent:
-            scale = 1 + s.focal_error_percent / 100 * self._fixed_error(index, "focal")[0]
+            scale = (
+                1 + s.focal_error_percent / 100 * self._fixed_error(index, "focal")[0]
+            )
             k[0, 0] *= scale
             k[1, 1] *= scale
         if not s.lens_distortion:
@@ -284,7 +351,9 @@ class SimulatedCapture:
         if not s.mount_error_m and not s.mount_error_deg:
             return Transform3d()
         t = self._fixed_error(index, "mount_translation") * s.mount_error_m
-        r = numpy.radians(self._fixed_error(index, "mount_rotation") * s.mount_error_deg)
+        r = numpy.radians(
+            self._fixed_error(index, "mount_rotation") * s.mount_error_deg
+        )
         return Transform3d(Translation3d(*t), Rotation3d(*r))
 
     def _fixed_error(self, index: int, kind: str) -> numpy.ndarray:
@@ -293,7 +362,11 @@ class SimulatedCapture:
         return numpy.random.default_rng(seed).standard_normal(3)
 
 
-def default_intrinsics(width: int, height: int, horizontal_fov_deg: float = 70.0) -> numpy.ndarray:
+def default_intrinsics(
+    width: int, height: int, horizontal_fov_deg: float = 70.0
+) -> numpy.ndarray:
     """A plausible pinhole camera for cameras without a calibration file."""
     focal = (width / 2) / math.tan(math.radians(horizontal_fov_deg) / 2)
-    return numpy.array([[focal, 0, width / 2], [0, focal, height / 2], [0, 0, 1]], dtype=numpy.float64)
+    return numpy.array(
+        [[focal, 0, width / 2], [0, focal, height / 2], [0, 0, 1]], dtype=numpy.float64
+    )

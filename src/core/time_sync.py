@@ -119,7 +119,12 @@ class TimeSync:
             table = inst.getTable(diagnostics_table)
             self._diag = {
                 name: table.getIntegerTopic(name).publish()
-                for name in ("connection_offset_us", "probe_offset_us", "probe_rtt2_us", "correction_us")
+                for name in (
+                    "connection_offset_us",
+                    "probe_offset_us",
+                    "probe_rtt2_us",
+                    "correction_us",
+                )
             }
 
     # ---------------------------------------------------------------- public
@@ -131,7 +136,9 @@ class TimeSync:
         # registered, which would turn sys.exit(1) restarts into core dumps.
         atexit.register(self._inst.removeListener, listener)
         if self._probe_interval_s > 0:
-            threading.Thread(target=self._probe_loop, name="time-sync-probe", daemon=True).start()
+            threading.Thread(
+                target=self._probe_loop, name="time-sync-probe", daemon=True
+            ).start()
 
     def snapshot(self) -> dict:
         """Current sync state, for the dashboard. Offsets are robot clock minus ours, in us."""
@@ -146,7 +153,9 @@ class TimeSync:
             "probe_offset_us": best.offset_us if best else None,
             "probe_rtt2_us": best.rtt2_us if best else None,
             "probe_age_s": time.monotonic() - best.measured_at_s if best else None,
-            "correction_us": best.offset_us - connection if best and connection is not None else None,
+            "correction_us": (
+                best.offset_us - connection if best and connection is not None else None
+            ),
             "probe_interval_s": self._probe_interval_s,
         }
 
@@ -168,7 +177,9 @@ class TimeSync:
         connection, best = offsets
         # ntcore treats a timestamp of 0 as "now", so never hand it 0.
         publish_us = max(1, local_us + best - connection)
-        return Timestamp(local_us=local_us, server_us=local_us + best, publish_us=publish_us)
+        return Timestamp(
+            local_us=local_us, server_us=local_us + best, publish_us=publish_us
+        )
 
     def received_to_local_us(self, nt_time_us: int) -> int:
         """Correct the timestamp of a value received from NT (``TimestampedX.time``).
@@ -203,17 +214,25 @@ class TimeSync:
         usable = [
             s
             for s in self._samples
-            if s.connection_offset_us == connection_offset_us and now - s.measured_at_s <= max_age_s
+            if s.connection_offset_us == connection_offset_us
+            and now - s.measured_at_s <= max_age_s
         ]
         return min(usable, key=lambda s: s.rtt2_us) if usable else None
 
     def _is_server(self) -> bool:
-        return bool(self._inst.getNetworkMode() & ntcore.NetworkTableInstance.NetworkMode.kNetModeServer)
+        return bool(
+            self._inst.getNetworkMode()
+            & ntcore.NetworkTableInstance.NetworkMode.kNetModeServer
+        )
 
     def _on_connection_time_sync(self, event: ntcore.Event) -> None:
         data = event.data
         if data.valid:
-            log.info("NT time synced: offset=%d us, rtt/2=%d us", data.serverTimeOffset, data.rtt2)
+            log.info(
+                "NT time synced: offset=%d us, rtt/2=%d us",
+                data.serverTimeOffset,
+                data.rtt2,
+            )
             self._wake.set()  # probe now instead of waiting a full interval
         else:
             log.warning("NT time sync lost (disconnected)")
@@ -236,14 +255,20 @@ class TimeSync:
             with self._lock:
                 self._samples.append(sample)
                 best = self._best_sample(connection)
-            log.debug("Time sync probe: offset=%d us rtt/2=%d us", sample.offset_us, sample.rtt2_us)
+            log.debug(
+                "Time sync probe: offset=%d us rtt/2=%d us",
+                sample.offset_us,
+                sample.rtt2_us,
+            )
             if self._diag is not None and best is not None:
                 self._diag["connection_offset_us"].set(connection)
                 self._diag["probe_offset_us"].set(best.offset_us)
                 self._diag["probe_rtt2_us"].set(best.rtt2_us)
                 self._diag["correction_us"].set(best.offset_us - connection)
 
-    def _probe_once(self, connection_offset_us: int, timeout_s: float = 2.0) -> _OffsetSample | None:
+    def _probe_once(
+        self, connection_offset_us: int, timeout_s: float = 2.0
+    ) -> _OffsetSample | None:
         """Connect a throwaway NT client and let ntcore measure a fresh offset."""
         probe = ntcore.NetworkTableInstance.create()
         result: list[_OffsetSample] = []
@@ -262,7 +287,10 @@ class TimeSync:
                 done.set()
 
         # Its connect/disconnect every interval is expected; only log problems.
-        probe.configPythonLogging(min=ntcore.NetworkTableInstance.LogLevel.kLogWarning, name="nt.timesync_probe")
+        probe.configPythonLogging(
+            min=ntcore.NetworkTableInstance.LogLevel.kLogWarning,
+            name="nt.timesync_probe",
+        )
         try:
             probe.addTimeSyncListener(False, on_sync)
             probe.setServer(self._server_address, self._server_port)

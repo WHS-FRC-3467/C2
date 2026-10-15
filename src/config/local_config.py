@@ -72,9 +72,12 @@ def load_local_config(config_path: Path, calibration_dir: Path) -> LocalConfig:
         camera_exposure=int(data.get("camera_exposure", 0)),
         camera_gain=int(data.get("camera_gain", 0)),
         time_sync_probe_interval_s=float(data.get("time_sync_probe_interval_s", 10.0)),
-        pipelines_enabled={name: bool(v) for name, v in data.get("pipelines_enabled", {}).items()},
+        pipelines_enabled={
+            name: bool(v) for name, v in data.get("pipelines_enabled", {}).items()
+        },
         calibrations=tuple(
-            _load_calibration(calibration_dir / f"calibration_{i}.yml") for i in range(num_cameras)
+            _load_calibration(calibration_dir / f"calibration_{i}.yml")
+            for i in range(num_cameras)
         ),
     )
 
@@ -91,7 +94,11 @@ def _load_calibration(path: Path) -> CameraCalibration | None:
     error_node = storage.getNode("avg_reprojection_error")
     error = None if error_node.empty() else error_node.real()
     storage.release()
-    if not isinstance(camera_matrix, numpy.ndarray) or not isinstance(distortion, numpy.ndarray):
-        log.warning("Calibration %s is missing camera_matrix or distortion_coefficients", path)
+    if not isinstance(camera_matrix, numpy.ndarray) or not isinstance(
+        distortion, numpy.ndarray
+    ):
+        log.warning(
+            "Calibration %s is missing camera_matrix or distortion_coefficients", path
+        )
         return None
     return CameraCalibration(camera_matrix, distortion, width, height, error)

@@ -22,10 +22,13 @@ _PUBLISH_PERIOD_S = 0.005
 class FlatbufferPublisher:
     """Publishes flatbuffer payloads on a raw topic, stamped with their capture time."""
 
-    def __init__(self, inst: ntcore.NetworkTableInstance, topic: str, type_string: str) -> None:
+    def __init__(
+        self, inst: ntcore.NetworkTableInstance, topic: str, type_string: str
+    ) -> None:
         self.topic = topic
         self._pub = inst.getRawTopic(topic).publish(
-            type_string, ntcore.PubSubOptions(periodic=_PUBLISH_PERIOD_S, **_MESSAGE_OPTIONS)
+            type_string,
+            ntcore.PubSubOptions(periodic=_PUBLISH_PERIOD_S, **_MESSAGE_OPTIONS),
         )
 
     def publish(self, payload: bytes, timestamp: Timestamp | None) -> bool:
@@ -65,12 +68,16 @@ class FlatbufferSubscriber:
         self.topic = topic
         self._time_sync = time_sync
         self._sub = inst.getRawTopic(topic).subscribe(
-            type_string, b"", ntcore.PubSubOptions(pollStorage=queue_depth, **_MESSAGE_OPTIONS)
+            type_string,
+            b"",
+            ntcore.PubSubOptions(pollStorage=queue_depth, **_MESSAGE_OPTIONS),
         )
 
     def read(self) -> list[FlatbufferMessage]:
         return [
-            FlatbufferMessage(value.value, self._time_sync.received_to_local_us(value.time))
+            FlatbufferMessage(
+                value.value, self._time_sync.received_to_local_us(value.time)
+            )
             for value in self._sub.readQueue()
             if value.value
         ]

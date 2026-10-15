@@ -30,9 +30,13 @@ class DebugStreams:
         self.annotated = MjpegStream(self._annotated_combined, ANNOTATED_JPEG_QUALITY)
         """Every camera side by side, with overlays."""
         self.annotated_cameras = [
-            MjpegStream(self._annotated_source(i), ANNOTATED_JPEG_QUALITY) for i in range(num_cameras)
+            MjpegStream(self._annotated_source(i), ANNOTATED_JPEG_QUALITY)
+            for i in range(num_cameras)
         ]
-        self.raw_cameras = [MjpegStream(self._raw_source(i), RAW_JPEG_QUALITY) for i in range(num_cameras)]
+        self.raw_cameras = [
+            MjpegStream(self._raw_source(i), RAW_JPEG_QUALITY)
+            for i in range(num_cameras)
+        ]
 
     def set_frames(self, frames: FrameSet) -> None:
         """Cheap: stores a reference. Drawing and encoding only happen for connected clients."""
@@ -49,10 +53,15 @@ class DebugStreams:
         if frames is None:
             return None
         with self._lock:
-            if self._annotated_cache is not None and self._annotated_cache[0] == frames.sequence:
+            if (
+                self._annotated_cache is not None
+                and self._annotated_cache[0] == frames.sequence
+            ):
                 return self._annotated_cache
         image = (
-            cv2.cvtColor(frames.combined, cv2.COLOR_GRAY2BGR) if frames.combined.ndim == 2 else frames.combined.copy()
+            cv2.cvtColor(frames.combined, cv2.COLOR_GRAY2BGR)
+            if frames.combined.ndim == 2
+            else frames.combined.copy()
         )
         for overlay in self._overlays():
             overlay(_split(image, frames.num_cameras))
@@ -60,7 +69,9 @@ class DebugStreams:
             self._annotated_cache = (frames.sequence, image)
         return self._annotated_cache
 
-    def _annotated_source(self, camera_index: int) -> Callable[[], tuple[int, numpy.ndarray] | None]:
+    def _annotated_source(
+        self, camera_index: int
+    ) -> Callable[[], tuple[int, numpy.ndarray] | None]:
         def source() -> tuple[int, numpy.ndarray] | None:
             combined = self._annotated_combined()
             if combined is None:
@@ -70,10 +81,16 @@ class DebugStreams:
 
         return source
 
-    def _raw_source(self, camera_index: int) -> Callable[[], tuple[int, numpy.ndarray] | None]:
+    def _raw_source(
+        self, camera_index: int
+    ) -> Callable[[], tuple[int, numpy.ndarray] | None]:
         def source() -> tuple[int, numpy.ndarray] | None:
             frames = self._latest()
-            return None if frames is None else (frames.sequence, frames.cameras[camera_index])
+            return (
+                None
+                if frames is None
+                else (frames.sequence, frames.cameras[camera_index])
+            )
 
         return source
 

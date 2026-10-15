@@ -6,6 +6,7 @@ Outputs: /<dev>/pipelines/apriltag/output/camera_<i>   (schema/apriltag.fbs, "ds
          so the robot can tell "no tags seen" apart from "disconnected".
 Config:  /<dev>/pipelines/apriltag/config/tag_layout       AprilTagFieldLayout JSON
          /<dev>/pipelines/apriltag/config/fiducial_size_m  tag edge length, meters
+         /<dev>/pipelines/apriltag/config/min_tag_size_px     leave small (distant) tags out of the solve
 """
 
 from __future__ import annotations
@@ -21,7 +22,12 @@ import numpy
 
 from pipelines.apriltag.detector import ArucoNanoDetector, TagDetection
 from pipelines.apriltag.encoder import TYPE_STRING, encode_camera_frame
-from pipelines.apriltag.pose_solver import CameraPoseObservation, PoseSolution, solve_camera_pose
+from pipelines.apriltag.pose_solver import (
+    CameraPoseObservation,
+    PoseSolution,
+    solve_camera_pose,
+)
+from pipelines.apriltag.tag_filter import exclude_small_tags
 from pipelines.apriltag.tag_layout import FieldTag, parse_tag_layout
 from pipelines.pipeline import Overlay, Pipeline, PipelineContext, PipelineInputs
 from vision.overlay import draw_tag_detections
@@ -33,6 +39,9 @@ log = logging.getLogger(__name__)
 class AprilTagSettings:
     tag_layout: str = ""
     fiducial_size_m: float = 0.1651  # 6.5 in
+    min_tag_size_px: float = 0.0
+    """Tags whose longest edge is shorter than this in the image are left out
+    of the solve. 0 = use every tag. See tag_filter.py."""
 
 
 class AprilTagPipeline(Pipeline[AprilTagSettings]):
@@ -48,17 +57,21 @@ class AprilTagPipeline(Pipeline[AprilTagSettings]):
         self._detectors = [ArucoNanoDetector() for _ in range(n)]
         self._layout: dict[int, FieldTag] = {}
         self._tag_size_m = 0.0
+        self._min_tag_size_px = 0.0
         self._fps = _FpsCounter()
         self._summary: dict | None = None
 
     def configure(self, settings: AprilTagSettings) -> None:
         self._tag_size_m = settings.fiducial_size_m
+        self._min_tag_size_px = settings.min_tag_size_px
         if not settings.tag_layout:
             self._layout = {}
             log.warning("No tag layout yet; publishing empty results")
             return
         try:
-            self._layout = parse_tag_layout(settings.tag_layout, settings.fiducial_size_m)
+            self._layout = parse_tag_layout(
+                settings.tag_layout, settings.fiducial_size_m
+            )
             log.info("Loaded tag layout with %d tags", len(self._layout))
         except ValueError:
             self._layout = {}
@@ -70,27 +83,42 @@ class AprilTagPipeline(Pipeline[AprilTagSettings]):
         fps = self._fps.tick()
 
         detections = list(
-            self._pool.map(lambda i: self._detectors[i].detect(frames.cameras[i]), range(frames.num_cameras))
+            self._pool.map(
+                lambda i: self._detectors[i].detect(frames.cameras[i]),
+                range(frames.num_cameras),
+            )
         )
 
         # None if we aren't synced with the robot: skip solving, nothing can be sent.
         stamp = self.context.time_sync.stamp(frames.capture_time_us)
         observations: list[CameraPoseObservation | None] = [None] * frames.num_cameras
+        excluded: list[list[TagDetection]] = [[] for _ in range(frames.num_cameras)]
         if stamp is not None:
             for i, camera_detections in enumerate(detections):
                 calibration = self.context.calibrations[i]
                 if calibration is not None and self._layout:
-                    observations[i] = solve_camera_pose(
-                        camera_detections, self._layout, self._tag_size_m, calibration
+                    used, excluded[i] = exclude_small_tags(
+                        camera_detections, self._min_tag_size_px
                     )
-                self._outputs[i].publish(encode_camera_frame(i, observations[i], fps), stamp)
+                    observations[i] = solve_camera_pose(
+                        used, self._layout, self._tag_size_m, calibration
+                    )
+                self._outputs[i].publish(
+                    encode_camera_frame(i, observations[i], fps), stamp
+                )
 
         self._summary = {
             "published": stamp is not None,
             "layout_tags": len(self._layout),
             "tag_size_m": self._tag_size_m,
             "cameras": [
-                _camera_summary(i, detections[i], observations[i], self.context.calibrations[i] is not None)
+                _camera_summary(
+                    i,
+                    detections[i],
+                    excluded[i],
+                    observations[i],
+                    self.context.calibrations[i] is not None,
+                )
                 for i in range(frames.num_cameras)
             ],
         }
@@ -106,7 +134,11 @@ class AprilTagPipeline(Pipeline[AprilTagSettings]):
 
 
 def _camera_summary(
-    index: int, detections: list[TagDetection], observation: CameraPoseObservation | None, calibrated: bool
+    index: int,
+    detections: list[TagDetection],
+    excluded: list[TagDetection],
+    observation: CameraPoseObservation | None,
+    calibrated: bool,
 ) -> dict:
     def pose(solution: PoseSolution) -> dict:
         p = solution.field_to_camera
@@ -126,8 +158,13 @@ def _camera_summary(
         "calibrated": calibrated,
         "detected_ids": sorted(d.tag_id for d in detections),
         "used_ids": observation.tag_ids if observation else [],
+        "too_small_ids": sorted(d.tag_id for d in excluded),
         "pose": pose(observation.best) if observation else None,
-        "alternate_pose": pose(observation.alternate) if observation and observation.alternate else None,
+        "alternate_pose": (
+            pose(observation.alternate)
+            if observation and observation.alternate
+            else None
+        ),
     }
 
 

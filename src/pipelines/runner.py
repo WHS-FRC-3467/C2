@@ -36,7 +36,12 @@ _START_RETRY_S = 5.0
 
 
 class PipelineRunner:
-    def __init__(self, pipeline_type: type[Pipeline], context: PipelineContext, enabled_by_default: bool) -> None:
+    def __init__(
+        self,
+        pipeline_type: type[Pipeline],
+        context: PipelineContext,
+        enabled_by_default: bool,
+    ) -> None:
         self.name = pipeline_type.NAME
         self._type = pipeline_type
         self._context = context
@@ -44,7 +49,9 @@ class PipelineRunner:
 
         self._enabled = table.getBooleanTopic("enabled").getEntry(enabled_by_default)
         self._enabled.setDefault(enabled_by_default)
-        self._settings = NTSettings(context.inst, f"{context.table_path}/config", pipeline_type.SETTINGS)
+        self._settings = NTSettings(
+            context.inst, f"{context.table_path}/config", pipeline_type.SETTINGS
+        )
         self._inputs = {
             key: FlatbufferSubscriber(
                 context.inst,
@@ -79,7 +86,9 @@ class PipelineRunner:
     # -------------------------------------------------- called by other threads
 
     def start(self) -> None:
-        self._thread = threading.Thread(target=self._run, name=f"pipeline-{self.name}", daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, name=f"pipeline-{self.name}", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -107,7 +116,9 @@ class PipelineRunner:
         if pipeline is not None:
             try:
                 summary = pipeline.summary()
-            except Exception:  # noqa: BLE001 - a broken summary must not break the dashboard
+            except (
+                Exception
+            ):  # noqa: BLE001 - a broken summary must not break the dashboard
                 log.exception("Pipeline %s summary failed", self.name)
         return {
             "name": self.name,
@@ -150,7 +161,9 @@ class PipelineRunner:
                     self._pipeline.configure(settings)
                 self._overlay = self._pipeline.process(inputs)
                 self._set_active(True)
-            except Exception as e:  # noqa: BLE001 - one bad frame must not kill the pipeline
+            except (
+                Exception
+            ) as e:  # noqa: BLE001 - one bad frame must not kill the pipeline
                 log.exception("Pipeline %s failed", self.name)
                 self._set_active(False, f"{type(e).__name__}: {e}")
                 time.sleep(_IDLE_POLL_S)  # don't spin on a persistent error
@@ -158,7 +171,9 @@ class PipelineRunner:
 
             calls += 1
             if inputs.frames is not None:
-                self._latency_ms = (nt_now_us() - inputs.frames.capture_time_us) / 1000.0
+                self._latency_ms = (
+                    nt_now_us() - inputs.frames.capture_time_us
+                ) / 1000.0
                 self._latency_pub.set(self._latency_ms)
             now = time.monotonic()
             if now - last_status >= _STATUS_PERIOD_S:
@@ -170,14 +185,22 @@ class PipelineRunner:
     def _update_enabled(self, force_disable: bool = False) -> bool:
         """Create or tear down the pipeline when ``enabled`` changes. Returns whether it is enabled."""
         enabled = self._enabled.get() and not force_disable
-        if enabled and self._pipeline is None and time.monotonic() >= self._next_start_attempt:
+        if (
+            enabled
+            and self._pipeline is None
+            and time.monotonic() >= self._next_start_attempt
+        ):
             log.info("Enabling pipeline %s", self.name)
             try:
                 self._pipeline = self._type(self._context)
                 self._settings.poll()
                 self._pipeline.configure(self._settings.current)
             except Exception as e:  # noqa: BLE001
-                log.exception("Pipeline %s failed to start; retrying in %.0f s", self.name, _START_RETRY_S)
+                log.exception(
+                    "Pipeline %s failed to start; retrying in %.0f s",
+                    self.name,
+                    _START_RETRY_S,
+                )
                 self._set_active(False, f"{type(e).__name__}: {e}")
                 self._pipeline = None
                 self._next_start_attempt = time.monotonic() + _START_RETRY_S

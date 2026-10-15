@@ -33,8 +33,12 @@ class FrameSet:
         return len(self.cameras)
 
     @staticmethod
-    def from_combined(sequence: int, capture_time_us: int, combined: numpy.ndarray, num_cameras: int) -> FrameSet:
+    def from_combined(
+        sequence: int, capture_time_us: int, combined: numpy.ndarray, num_cameras: int
+    ) -> FrameSet:
         combined.setflags(write=False)
         width = combined.shape[1] // num_cameras
-        cameras = tuple(combined[:, i * width : (i + 1) * width] for i in range(num_cameras))
+        cameras = tuple(
+            combined[:, i * width : (i + 1) * width] for i in range(num_cameras)
+        )
         return FrameSet(sequence, capture_time_us, combined, cameras)
