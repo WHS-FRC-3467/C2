@@ -237,6 +237,28 @@ default, even if C2 restarts afterwards.
   Being in pixels, one value works across cameras: the distance it corresponds to is about
   `focal_length_px * tag_size_m / min_tag_size_px` (50 px is ~4.6 m at f = 1380 px, ~6.6 m at
   f = 2000 px). See `src/pipelines/apriltag/tag_filter.py`.
+* **Temporal acceleration** (`temporal_acceleration`, default on; `roi_padding` 0.5;
+  `full_frame_interval` 15): from each camera's recent poses, predict where every tag will
+  appear and run the detector only on padded regions around those spots (drawn as cyan boxes on
+  the dashboard's overlay stream). See `src/pipelines/apriltag/temporal.py`. Idea from
+  [EagleEye](https://scythe-engineering.github.io/EagleEye-Docs/docs/user-guide/temporal-acceleration);
+  this is an independent implementation (EagleEye's license is noncommercial, incompatible with
+  C2's AGPL) that also predicts motion, recovers in the same frame when the predicted regions
+  come up empty, periodically searches the whole image, and only tracks from unambiguous poses.
+
+  Measured in simulation (4 cameras at 1600x1304, 45 fps, 2025 field, single process, no
+  rendering during timing):
+
+  | | off | on |
+  | --- | --- | --- |
+  | detection time, camera that sees tags | 4.8 ms | 1.2 ms (searches ~1-6% of the image) |
+  | total detection CPU per frame, 4 cameras | 19.8 ms | 10.2 ms |
+  | tags found vs. full search, 2 m/s | 100% | 99.3% |
+  | tags found vs. full search, 2 m/s + 4 rad/s spin | 100% | 97.2% |
+  | multi-tag pose error (median) | 0.29 cm | 0.29 cm |
+
+  It halves detection CPU but barely changes latency: cameras run in parallel, and a camera that
+  sees no tags has no pose to predict from, so it still searches the whole image every frame.
 * **Output:** `output/camera_<i>`, type string `dsv0_fb`, schema `schema/apriltag.fbs`.
   One message per camera per frame, including frames with no tags, so "nothing
   seen" can be told apart from "disconnected". It contains the field-to-camera
