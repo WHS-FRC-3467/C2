@@ -10,7 +10,7 @@ robot, and publishes the results to NetworkTables as timestamped flatbuffers.
 MultiCameraCapture ──FrameSet──► PipelineManager ──► PipelineRunner (1 thread / pipeline)
       (capture/)                   (pipelines/)          │  ▲
                   │                                      │  └── NT: enabled, config/*, flatbuffer inputs
-                  └──► DebugStreams (MJPEG)              └────► NT: output/* (flatbuffers), status/*
+                  └──► DebugStreams ──► web dashboard    └────► NT: output/* (flatbuffers), status/*
 ```
 
 ## Running
@@ -30,7 +30,7 @@ python src/main.py                # run from the repo root (config.json and cali
 | --- | --- |
 | `device_id` | NT root table, e.g. `dsv0` → `/dsv0/...`, and the NT client name |
 | `server_ip` | NT server (the robot) |
-| `stream_port` | annotated MJPEG stream; raw camera *i* on `stream_port+1+i`; calibration upload on `stream_port+10` |
+| `stream_port` | web dashboard (see below); calibration upload page on `stream_port+10` |
 | `num_cameras` | cameras side by side in the module's frame |
 | `camera_id`, `camera_resolution_width/height`, `camera_exposure`, `camera_gain` | capture defaults until the robot publishes `/<dev>/config/*`. Width is per camera |
 | `pipelines_enabled` | default `enabled` per pipeline, e.g. `{"apriltag": true}` |
@@ -55,9 +55,34 @@ project builds its Java classes from `C2/schema/*.fbs` (its git submodule).
 | `src/pipelines/pipeline.py` | `Pipeline` base class: what a pipeline is |
 | `src/pipelines/runner.py` | runs pipelines; enable/disable/config/status over NT |
 | `src/pipelines/apriltag/` | the AprilTag pipeline (detector + its aruco_nano C++ library, tag layout, solver, encoder) |
-| `src/servers/` | MJPEG debug streams, calibration upload page |
+| `src/servers/` | web dashboard (`dashboard_server.py` + `dashboard/index.html`), MJPEG streams, calibration upload page |
+| `src/core/log_buffer.py` | recent log lines, shown on the dashboard |
 | `schema/*.fbs` | flatbuffer schemas; Python is generated into `schema/<namespace>/` |
 | `tests/` | `python -m unittest discover -s tests -t .` |
+
+## Dashboard
+
+Open `http://<coprocessor>:<stream_port>/` (port 8000 by default) in a browser. It shows:
+
+- **Cameras:** a live stream per camera, with pipeline overlays or raw. Size and
+  frame rate are adjustable, and you can pause the streams (they use bandwidth on
+  the robot radio). Each camera shows its connected status and whether it has a
+  calibration. If the calibration was made at a different resolution from the
+  camera's current one, it is flagged.
+- **Pipelines:** enabled/running/error state, fps, latency, current settings,
+  NT inputs and outputs, and each pipeline's latest results (for AprilTag:
+  tags seen and the solved pose per camera).
+- **Capture, NetworkTables and time sync:** camera settings, the NT connection,
+  and the drift correction currently applied.
+- **Log:** recent log lines, including errors with tracebacks.
+
+The page is read-only: configure C2 from the robot (or a dashboard such as
+AdvantageScope/Elastic) over NT. It is self-contained, with no internet access
+needed. The same data is available as JSON at `/api/status` and `/api/logs?after=<id>`.
+
+Streams are also available directly: `/stream` (every camera, with
+overlays), `/cameras/<i>/stream` (with overlays), and `/cameras/<i>/raw`. Each
+takes `?width=<px>` and `?fps=<max>`.
 
 ## NetworkTables layout
 

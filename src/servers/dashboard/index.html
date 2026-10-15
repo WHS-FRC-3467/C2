@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C2 Dashboard</title>
+<!-- Self-contained on purpose: no CDNs, so it works on a field network with no internet. -->
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --border: #2a2f3a;
+    --text: #e6e8ec; --muted: #8b93a3; --accent: #5aa9ff;
+    --ok: #3fbf6f; --warn: #e6b450; --bad: #ef5b5b; --off: #5b6170;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
+           padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header .stat { color: var(--muted); }
+  header .stat b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  main { padding: 16px; display: grid; gap: 16px; max-width: 1800px; margin: 0 auto; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  section > h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .two-col { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+           background: var(--off); color: #fff; white-space: nowrap; }
+  .badge.ok { background: var(--ok); } .badge.warn { background: var(--warn); color: #222; } .badge.bad { background: var(--bad); }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; font-weight: 400; }
+  select, button { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font: inherit; }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  .cameras { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); }
+  .camera { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .camera.big { grid-column: 1 / -1; }
+  .camera .head { display: flex; gap: 6px; align-items: center; padding: 6px 8px; flex-wrap: wrap; }
+  .camera .head .name { font-weight: 600; margin-right: auto; }
+  .camera .view { position: relative; background: #000; aspect-ratio: var(--camera-aspect, 1600 / 1304); cursor: zoom-in; }
+  .camera.big .view { cursor: zoom-out; }
+  .camera img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .camera .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
+  .camera .foot { padding: 6px 8px; color: var(--muted); font-size: 12px; min-height: 1.5em; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.mono, .mono { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .pipeline { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+  .pipeline:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .pipeline h3 { margin: 0 0 8px; font-size: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .error { background: #3a1d20; border: 1px solid #6b2b30; color: #ffb4b4; border-radius: 6px; padding: 6px 8px; margin: 6px 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
+  .subhead { color: var(--muted); font-size: 12px; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .table-wrap { overflow-x: auto; }
+  #logs { height: 320px; overflow: auto; background: var(--panel-2); border-radius: 6px; padding: 6px 8px; font-family: var(--mono); font-size: 12px; }
+  #logs div { white-space: pre-wrap; word-break: break-word; }
+  #logs .WARNING { color: var(--warn); } #logs .ERROR, #logs .CRITICAL { color: var(--bad); } #logs .DEBUG { color: var(--muted); }
+  #logs .t { color: var(--muted); }
+  #banner { display: none; background: var(--bad); color: #fff; padding: 8px 16px; font-weight: 600; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); }
+  @media (max-width: 600px) { main { padding: 10px; } header { padding: 8px 10px; } }
+</style>
+</head>
+<body>
+<div id="banner">Can't reach C2. Retrying…</div>
+<header>
+  <h1 id="title">C2</h1>
+  <span id="nt-badge" class="badge">NT</span>
+  <span class="stat">heartbeat <b id="heartbeat">–</b></span>
+  <span class="stat">uptime <b id="uptime">–</b></span>
+  <span class="stat">capture <b id="capture-fps">–</b> fps</span>
+  <span class="stat">time sync <b id="sync">–</b></span>
+  <span class="stat" style="margin-left:auto"><a id="calib-link" href="#" target="_blank">calibration upload</a></span>
+</header>
+
+<main>
+  <section>
+    <h2>Cameras
+      <span class="controls">
+        <label>view <select id="view-mode"><option value="stream">with overlays</option><option value="raw">raw</option></select></label>
+        <label>size <select id="view-width"><option value="480">small</option><option value="800" selected>medium</option><option value="0">full</option></select></label>
+        <label>fps <select id="view-fps"><option>2</option><option selected>10</option><option>30</option></select></label>
+        <button id="pause">pause streams</button>
+      </span>
+    </h2>
+    <div id="cameras" class="cameras"></div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">Click a camera to enlarge. Streams use bandwidth on the robot radio; pause them when not needed.</p>
+  </section>
+
+  <section>
+    <h2>Pipelines</h2>
+    <div id="pipelines"><span class="muted">Loading…</span></div>
+  </section>
+
+  <div class="two-col">
+    <section><h2>Capture</h2><dl id="capture" class="kv"></dl></section>
+    <section><h2>NetworkTables &amp; time sync</h2><dl id="nt" class="kv"></dl></section>
+  </div>
+
+  <section>
+    <h2>Log
+      <span class="controls">
+        <label>level <select id="log-level"><option value="DEBUG">all</option><option value="INFO" selected>info+</option><option value="WARNING">warnings+</option></select></label>
+        <button id="log-clear">clear</button>
+      </span>
+    </h2>
+    <div id="logs"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const LEVELS = { DEBUG: 10, INFO: 20, WARNING: 30, ERROR: 40, CRITICAL: 50 };
+
+let paused = false;
+let numCameras = 0;
+let lastHeartbeat = null;
+let lastHeartbeatChange = 0;
+
+// ---------- formatting
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = (v, d = 1) => (v === null || v === undefined ? "–" : Number(v).toFixed(d));
+const badge = (text, kind) => `<span class="badge ${kind || ""}">${esc(text)}</span>`;
+function duration(s) {
+  if (s == null) return "–";
+  s = Math.floor(s);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}h ${m}m` : m ? `${m}m ${sec}s` : `${sec}s`;
+}
+function fmtValue(v) {
+  if (v === null || v === undefined) return "–";
+  if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(3);
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (Array.isArray(v)) return v.length ? v.map(fmtValue).join(", ") : "none";
+  if (typeof v === "object") return Object.entries(v).map(([k, x]) => `${k}=${fmtValue(x)}`).join(" ");
+  return String(v);
+}
+const kv = (pairs) => pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("");
+
+// ---------- cameras
+function streamUrl(i) {
+  const width = Number($("view-width").value);
+  const params = new URLSearchParams({ fps: $("view-fps").value });
+  if (width) params.set("width", width);
+  return `/cameras/${i}/${$("view-mode").value}?${params}`;
+}
+function buildCameras(n) {
+  numCameras = n;
+  $("cameras").innerHTML = Array.from({ length: n }, (_, i) => `
+    <div class="camera" id="cam-${i}">
+      <div class="head"><span class="name">Camera ${i}</span><span class="conn"></span><span class="calib"></span></div>
+      <div class="view"><div class="placeholder">paused</div><img alt="Camera ${i}"></div>
+      <div class="foot"></div>
+    </div>`).join("");
+  for (let i = 0; i < n; i++) {
+    $(`cam-${i}`).querySelector(".view").addEventListener("click", () => $(`cam-${i}`).classList.toggle("big"));
+  }
+  refreshStreams();
+}
+function refreshStreams() {
+  for (let i = 0; i < numCameras; i++) {
+    const img = $(`cam-${i}`).querySelector("img");
+    // Removing src closes the HTTP connection, so paused streams cost nothing.
+    if (paused) img.removeAttribute("src"); else img.src = streamUrl(i);
+    img.style.display = paused ? "none" : "";
+  }
+  $("pause").textContent = paused ? "resume streams" : "pause streams";
+}
+["view-mode", "view-width", "view-fps"].forEach((id) => $(id).addEventListener("change", refreshStreams));
+$("pause").addEventListener("click", () => { paused = !paused; refreshStreams(); });
+
+function renderCameras(status) {
+  // Match tile shape to the real per-camera resolution.
+  const s = status.capture.settings;
+  if (s && s.camera_resolution_width && s.camera_resolution_height) {
+    document.documentElement.style.setProperty("--camera-aspect", `${s.camera_resolution_width} / ${s.camera_resolution_height}`);
+  }
+  const apriltag = status.pipelines.find((p) => p.name === "apriltag");
+  const tagSummary = apriltag && apriltag.summary ? apriltag.summary.cameras : null;
+  for (const cam of status.cameras) {
+    const el = $(`cam-${cam.index}`);
+    if (!el) continue;
+    el.querySelector(".conn").innerHTML = cam.connected ? badge("connected", "ok") : badge("disconnected", "bad");
+    const c = cam.calibration;
+    let calib;
+    if (!c.loaded) calib = badge("no calibration", "bad");
+    else if (c.matches_resolution === false) calib = badge(`calibrated at ${c.image_size.join("×")}`, "warn");
+    else calib = badge("calibrated", "ok");
+    el.querySelector(".calib").innerHTML = calib;
+    const t = tagSummary && tagSummary[cam.index];
+    let foot = "";
+    if (t) {
+      foot = t.detected_ids.length ? `tags ${t.detected_ids.join(", ")}` : "no tags";
+      if (t.pose) foot += ` · x ${num(t.pose.x, 2)} y ${num(t.pose.y, 2)} z ${num(t.pose.z, 2)} m · yaw ${num(t.pose.yaw_deg)}°`;
+    }
+    el.querySelector(".foot").textContent = foot;
+  }
+}
+
+// ---------- pipelines
+function summaryHtml(summary) {
+  if (summary === null || summary === undefined) return "";
+  if (typeof summary !== "object" || Array.isArray(summary)) return `<div class="mono">${esc(fmtValue(summary))}</div>`;
+  let scalars = [], html = "";
+  for (const [key, value] of Object.entries(summary)) {
+    if (Array.isArray(value) && value.length && value.every((r) => r && typeof r === "object" && !Array.isArray(r))) {
+      const cols = [...new Set(value.flatMap(Object.keys))];
+      html += `<div class="subhead">${esc(key)}</div><div class="table-wrap"><table><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
+        value.map((row) => `<tr>${cols.map((c) => `<td>${esc(fmtValue(row[c]))}</td>`).join("")}</tr>`).join("") + "</table></div>";
+    } else {
+      scalars.push([key, esc(fmtValue(value))]);
+    }
+  }
+  return (scalars.length ? `<dl class="kv">${kv(scalars)}</dl>` : "") + html;
+}
+function renderPipelines(pipelines) {
+  if (!pipelines.length) { $("pipelines").innerHTML = `<span class="muted">No pipelines registered.</span>`; return; }
+  $("pipelines").innerHTML = pipelines.map((p) => {
+    const state = !p.enabled ? badge("disabled") : p.error ? badge("error", "bad") : p.active ? badge("running", "ok") : badge("starting", "warn");
+    const settings = Object.entries(p.settings);
+    return `<div class="pipeline">
+      <h3>${esc(p.name)} ${state}
+        <span class="muted" style="font-weight:400">${p.running ? `${num(p.fps)} fps · ${num(p.latency_ms)} ms latency` : ""}</span></h3>
+      ${p.error ? `<div class="error">${esc(p.error)}</div>` : ""}
+      <div class="two-col">
+        <div>
+          <div class="subhead">settings (NT: config/…)</div>
+          ${settings.length ? `<dl class="kv">${kv(settings.map(([k, v]) => [k, `<span class="mono">${esc(fmtValue(v))}</span>`]))}</dl>` : `<span class="muted">none</span>`}
+        </div>
+        <div>
+          <div class="subhead">inputs / outputs</div>
+          <dl class="kv">${kv([
+            ["cameras", p.uses_cameras ? "yes" : "no"],
+            ["NT inputs", Object.keys(p.nt_inputs).length ? Object.entries(p.nt_inputs).map(([k, t]) => `${esc(k)}: <span class="mono">${esc(t)}</span>`).join("<br>") : "none"],
+            ["outputs", p.outputs.length ? p.outputs.map((t) => `<span class="mono">${esc(t)}</span>`).join("<br>") : "none yet"],
+          ])}</dl>
+        </div>
+      </div>
+      ${p.summary ? `<div class="subhead">latest results</div>${summaryHtml(p.summary)}` : ""}
+    </div>`;
+  }).join("");
+}
+
+// ---------- capture / NT
+function renderCapture(capture, health) {
+  const s = capture.settings || {};
+  $("capture").innerHTML = kv([
+    ["camera", capture.open ? badge("open", "ok") : badge("closed", "bad")],
+    ["device", esc(s.camera_id ?? "–")],
+    ["per-camera size", s.camera_resolution_width ? `${s.camera_resolution_width}×${s.camera_resolution_height}` : "–"],
+    ["combined frame", capture.combined_frame_size ? capture.combined_frame_size.join("×") : "–"],
+    ["exposure / gain", `${s.camera_exposure ?? "–"} / ${s.camera_gain ?? "–"}`],
+    ["capture fps", num(health.capture_fps)],
+    ["last frame", health.last_frame_age_s == null ? "never" : `${num(health.last_frame_age_s * 1000, 0)} ms ago`],
+  ]);
+}
+function renderNt(status) {
+  const ts = status.time_sync;
+  const conns = status.nt.connections.map((c) => `${c.remote_id ? esc(c.remote_id) + " @ " : ""}${esc(c.remote_ip)}:${c.remote_port} (NT ${(c.protocol >> 8)}.${c.protocol & 0xff})`).join("<br>") || "none";
+  $("nt").innerHTML = kv([
+    ["server", esc(status.device.server_ip)],
+    ["connected", status.nt.connected ? badge("yes", "ok") : badge("no", "bad")],
+    ["connections", conns],
+    ["time synced", ts.synced ? badge("yes", "ok") : badge("no", "bad")],
+    ["ntcore offset", ts.connection_offset_us == null ? "–" : `${ts.connection_offset_us} µs`],
+    ["probe offset", ts.probe_offset_us == null ? "–" : `${ts.probe_offset_us} µs (rtt/2 ${ts.probe_rtt2_us} µs, ${num(ts.probe_age_s)} s ago)`],
+    ["drift correction", ts.correction_us == null ? "–" : `${num(ts.correction_us / 1000, 2)} ms`],
+  ]);
+}
+
+function renderHeader(status) {
+  const h = status.health, ts = status.time_sync;
+  document.title = `${status.device.id} · C2`;
+  $("title").textContent = `C2 · ${status.device.id}`;
+  const robot = status.nt.connections[0];
+  $("nt-badge").outerHTML = `<span id="nt-badge" class="badge ${status.nt.connected ? "ok" : "bad"}">${status.nt.connected ? "NT connected" + (robot ? ` (${esc(robot.remote_ip)})` : "") : "NT disconnected"}</span>`;
+  if (h.heartbeat !== lastHeartbeat) { lastHeartbeat = h.heartbeat; lastHeartbeatChange = Date.now(); }
+  const stale = Date.now() - lastHeartbeatChange > 1500;
+  $("heartbeat").innerHTML = `${h.heartbeat}${stale ? " " + badge("stalled", "bad") : ""}`;
+  $("uptime").textContent = duration(h.uptime_s);
+  $("capture-fps").textContent = num(h.capture_fps);
+  $("sync").textContent = !ts.synced ? "not synced" : ts.correction_us == null ? "synced" : `synced, ${num(ts.correction_us / 1000, 2)} ms drift corrected`;
+  $("calib-link").href = `${location.protocol}//${location.hostname}:${status.device.calibration_upload_port}/`;
+}
+
+// ---------- polling
+async function pollStatus() {
+  try {
+    const res = await fetch("/api/status", { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    const status = await res.json();
+    $("banner").style.display = "none";
+    if (status.device.num_cameras !== numCameras) buildCameras(status.device.num_cameras);
+    renderHeader(status);
+    renderCameras(status);
+    renderPipelines(status.pipelines);
+    renderCapture(status.capture, status.health);
+    renderNt(status);
+  } catch (e) {
+    $("banner").style.display = "block";
+  }
+  setTimeout(pollStatus, 500);
+}
+
+let lastLogId = 0;
+async function pollLogs() {
+  try {
+    const res = await fetch(`/api/logs?after=${lastLogId}`, { cache: "no-store" });
+    const records = await res.json();
+    const box = $("logs");
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+    const minLevel = LEVELS[$("log-level").value];
+    for (const r of records) {
+      lastLogId = r.id;
+      const div = document.createElement("div");
+      div.className = r.level;
+      div.dataset.level = LEVELS[r.level] || 20;
+      div.style.display = div.dataset.level >= minLevel ? "" : "none";
+      div.innerHTML = `<span class="t">${new Date(r.time * 1000).toLocaleTimeString()}</span> ${esc(r.level)} ${esc(r.message)}`;
+      box.appendChild(div);
+    }
+    while (box.childElementCount > 1000) box.firstElementChild.remove();
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  } catch (e) { /* the status poll shows the banner */ }
+  setTimeout(pollLogs, 1000);
+}
+$("log-level").addEventListener("change", () => {
+  const minLevel = LEVELS[$("log-level").value];
+  for (const div of $("logs").children) div.style.display = Number(div.dataset.level) >= minLevel ? "" : "none";
+});
+$("log-clear").addEventListener("click", () => { $("logs").innerHTML = ""; });
+
+pollStatus();
+pollLogs();
+</script>
+</body>
+</html>

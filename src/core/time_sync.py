@@ -133,6 +133,23 @@ class TimeSync:
         if self._probe_interval_s > 0:
             threading.Thread(target=self._probe_loop, name="time-sync-probe", daemon=True).start()
 
+    def snapshot(self) -> dict:
+        """Current sync state, for the dashboard. Offsets are robot clock minus ours, in us."""
+        connection = self._inst.getServerTimeOffset()
+        best = None
+        if connection is not None:
+            with self._lock:
+                best = self._best_sample(connection)
+        return {
+            "synced": connection is not None,
+            "connection_offset_us": connection,
+            "probe_offset_us": best.offset_us if best else None,
+            "probe_rtt2_us": best.rtt2_us if best else None,
+            "probe_age_s": time.monotonic() - best.measured_at_s if best else None,
+            "correction_us": best.offset_us - connection if best and connection is not None else None,
+            "probe_interval_s": self._probe_interval_s,
+        }
+
     def server_offset_us(self) -> int | None:
         """Best estimate of ``server_time - local_time``, or None if not connected."""
         offsets = self._offsets()
@@ -244,6 +261,8 @@ class TimeSync:
                 )
                 done.set()
 
+        # Its connect/disconnect every interval is expected; only log problems.
+        probe.configPythonLogging(min=ntcore.NetworkTableInstance.LogLevel.kLogWarning, name="nt.timesync_probe")
         try:
             probe.addTimeSyncListener(False, on_sync)
             probe.setServer(self._server_address, self._server_port)

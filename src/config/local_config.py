@@ -22,6 +22,11 @@ log = logging.getLogger(__name__)
 class CameraCalibration:
     camera_matrix: numpy.ndarray
     distortion_coefficients: numpy.ndarray
+    image_width: int = 0
+    """Resolution the calibration was made at (0 if the file doesn't say).
+    Intrinsics are only valid at that resolution."""
+    image_height: int = 0
+    reprojection_error: float | None = None
 
 
 @dataclass(frozen=True)
@@ -82,8 +87,12 @@ def _load_calibration(path: Path) -> CameraCalibration | None:
     storage = cv2.FileStorage(str(path), cv2.FILE_STORAGE_READ)
     camera_matrix = storage.getNode("camera_matrix").mat()
     distortion = storage.getNode("distortion_coefficients").mat()
+    width = int(storage.getNode("image_width").real())
+    height = int(storage.getNode("image_height").real())
+    error_node = storage.getNode("avg_reprojection_error")
+    error = None if error_node.empty() else error_node.real()
     storage.release()
     if not isinstance(camera_matrix, numpy.ndarray) or not isinstance(distortion, numpy.ndarray):
         log.warning("Calibration %s is missing camera_matrix or distortion_coefficients", path)
         return None
-    return CameraCalibration(camera_matrix, distortion)
+    return CameraCalibration(camera_matrix, distortion, width, height, error)

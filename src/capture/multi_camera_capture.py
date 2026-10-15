@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import subprocess
 import sys
@@ -56,6 +57,15 @@ class MultiCameraCapture:
         self._sequence = 0
         self._slow_frames: deque[float] = deque()
         self._warned_bad_timestamp = False
+        self._frame_size: tuple[int, int] | None = None
+
+    def snapshot(self) -> dict:
+        """Current state, for the dashboard."""
+        return {
+            "open": self._video is not None,
+            "settings": dataclasses.asdict(self._settings) if self._settings else None,
+            "combined_frame_size": self._frame_size,
+        }
 
     def apply_settings(self, settings: CaptureSettings) -> None:
         """Apply new settings. Reopens the camera if the device or resolution changed."""
@@ -94,6 +104,7 @@ class MultiCameraCapture:
             image = numpy.ascontiguousarray(image[:, :, 0])
 
         self._sequence += 1
+        self._frame_size = (image.shape[1], image.shape[0])
         return FrameSet.from_combined(self._sequence, self._capture_time_us(read_end), image, self._num_cameras)
 
     # --------------------------------------------------------------- private

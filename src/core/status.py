@@ -45,6 +45,9 @@ class StatusPublisher:
         self._last_frame_s = -float("inf")
         self._has_image = [False] * num_cameras
         self._frame_count = 0
+        self._heartbeat = 0
+        self._fps = 0.0
+        self._started_s = time.monotonic()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -65,12 +68,27 @@ class StatusPublisher:
             self._has_image = has_image
             self._frame_count += 1
 
+    def snapshot(self) -> dict:
+        """Current health, for the dashboard."""
+        now = time.monotonic()
+        with self._lock:
+            age_s = now - self._last_frame_s
+            streaming = age_s <= FRAME_TIMEOUT_S
+            return {
+                "heartbeat": self._heartbeat,
+                "uptime_s": now - self._started_s,
+                "capture_fps": self._fps,
+                "last_frame_age_s": age_s if age_s != float("inf") else None,
+                "cameras_connected": [streaming and ok for ok in self._has_image],
+            }
+
     def _run(self) -> None:
         beat = 0
         last_frame_count = 0
         second_start_s = time.monotonic()
         while not self._stop.wait(HEARTBEAT_PERIOD_S):
             beat += 1
+            self._heartbeat = beat
             self._heartbeat_pub.set(beat)
             now = time.monotonic()
             with self._lock:
@@ -82,6 +100,7 @@ class StatusPublisher:
 
             if now - second_start_s >= 1.0:
                 fps = (frame_count - last_frame_count) / (now - second_start_s)
+                self._fps = fps
                 self._fps_pub.set(fps)
                 log.info("Capture %.1f fps, cameras connected: %s", fps, connected)
                 last_frame_count, second_start_s = frame_count, now

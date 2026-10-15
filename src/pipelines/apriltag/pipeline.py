@@ -11,6 +11,7 @@ Config:  /<dev>/pipelines/apriltag/config/tag_layout       AprilTagFieldLayout J
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -20,7 +21,7 @@ import numpy
 
 from pipelines.apriltag.detector import ArucoNanoDetector, TagDetection
 from pipelines.apriltag.encoder import TYPE_STRING, encode_camera_frame
-from pipelines.apriltag.pose_solver import solve_camera_pose
+from pipelines.apriltag.pose_solver import CameraPoseObservation, PoseSolution, solve_camera_pose
 from pipelines.apriltag.tag_layout import FieldTag, parse_tag_layout
 from pipelines.pipeline import Overlay, Pipeline, PipelineContext, PipelineInputs
 from vision.overlay import draw_tag_detections
@@ -48,6 +49,7 @@ class AprilTagPipeline(Pipeline[AprilTagSettings]):
         self._layout: dict[int, FieldTag] = {}
         self._tag_size_m = 0.0
         self._fps = _FpsCounter()
+        self._summary: dict | None = None
 
     def configure(self, settings: AprilTagSettings) -> None:
         self._tag_size_m = settings.fiducial_size_m
@@ -73,20 +75,60 @@ class AprilTagPipeline(Pipeline[AprilTagSettings]):
 
         # None if we aren't synced with the robot: skip solving, nothing can be sent.
         stamp = self.context.time_sync.stamp(frames.capture_time_us)
+        observations: list[CameraPoseObservation | None] = [None] * frames.num_cameras
         if stamp is not None:
             for i, camera_detections in enumerate(detections):
                 calibration = self.context.calibrations[i]
-                observation = None
                 if calibration is not None and self._layout:
-                    observation = solve_camera_pose(camera_detections, self._layout, self._tag_size_m, calibration)
-                self._outputs[i].publish(encode_camera_frame(i, observation, fps), stamp)
+                    observations[i] = solve_camera_pose(
+                        camera_detections, self._layout, self._tag_size_m, calibration
+                    )
+                self._outputs[i].publish(encode_camera_frame(i, observations[i], fps), stamp)
 
+        self._summary = {
+            "published": stamp is not None,
+            "layout_tags": len(self._layout),
+            "tag_size_m": self._tag_size_m,
+            "cameras": [
+                _camera_summary(i, detections[i], observations[i], self.context.calibrations[i] is not None)
+                for i in range(frames.num_cameras)
+            ],
+        }
         return _overlay(detections)
+
+    def summary(self) -> dict | None:
+        return self._summary
 
     def close(self) -> None:
         self._pool.shutdown(wait=True)
         for detector in self._detectors:
             detector.close()
+
+
+def _camera_summary(
+    index: int, detections: list[TagDetection], observation: CameraPoseObservation | None, calibrated: bool
+) -> dict:
+    def pose(solution: PoseSolution) -> dict:
+        p = solution.field_to_camera
+        r = p.rotation()
+        return {
+            "x": p.X(),
+            "y": p.Y(),
+            "z": p.Z(),
+            "roll_deg": math.degrees(r.X()),
+            "pitch_deg": math.degrees(r.Y()),
+            "yaw_deg": math.degrees(r.Z()),
+            "error": solution.reprojection_error,
+        }
+
+    return {
+        "camera": index,
+        "calibrated": calibrated,
+        "detected_ids": sorted(d.tag_id for d in detections),
+        "used_ids": observation.tag_ids if observation else [],
+        "pose": pose(observation.best) if observation else None,
+        "alternate_pose": pose(observation.alternate) if observation and observation.alternate else None,
+    }
 
 
 def _overlay(detections: list[list[TagDetection]]) -> Overlay:

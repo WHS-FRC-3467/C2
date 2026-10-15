@@ -97,6 +97,9 @@ class PipelineContext:
     def num_cameras(self) -> int:
         return len(self.calibrations)
 
+    def output_topics(self) -> list[str]:
+        return [publisher.topic for publisher in self._outputs.values()]
+
     def output(self, name: str, type_string: str) -> FlatbufferPublisher:
         """The publisher for ``/<dev>/pipelines/<pipeline>/output/<name>``.
 
@@ -131,6 +134,14 @@ class Pipeline(ABC, Generic[S]):
     @abstractmethod
     def process(self, inputs: PipelineInputs) -> Overlay | None:
         """Do the work and publish results. Optionally return a debug overlay."""
+
+    def summary(self) -> dict | list | None:
+        """Optional: the latest results as plain JSON-able data, shown on the dashboard.
+
+        Called from the web server's thread, so return a snapshot (e.g. build it
+        in process() and store it), don't compute from mutable state here.
+        """
+        return None
 
     def close(self) -> None:  # noqa: B027 - optional hook
         """Called when the pipeline is disabled. Release threads, GPU memory, etc."""

@@ -16,6 +16,7 @@ dashboard) can override them at any time.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import threading
 import time
@@ -60,6 +61,10 @@ class PipelineRunner:
         self._fps_pub = status.getDoubleTopic("fps").publish()
         self._latency_pub = status.getDoubleTopic("latency_ms").publish()
         self._error_pub = status.getStringTopic("error").publish()
+        self._active = False
+        self._error = ""
+        self._fps = 0.0
+        self._latency_ms: float | None = None
         self._active_pub.set(False)
         self._error_pub.set("")
 
@@ -95,6 +100,35 @@ class PipelineRunner:
     def overlay(self) -> Overlay | None:
         return self._overlay if self._pipeline is not None else None
 
+    def snapshot(self) -> dict:
+        """Current state, for the dashboard."""
+        pipeline = self._pipeline
+        summary = None
+        if pipeline is not None:
+            try:
+                summary = pipeline.summary()
+            except Exception:  # noqa: BLE001 - a broken summary must not break the dashboard
+                log.exception("Pipeline %s summary failed", self.name)
+        return {
+            "name": self.name,
+            "enabled": bool(self._enabled.get()),
+            "running": pipeline is not None,
+            "active": self._active,
+            "fps": self._fps,
+            "latency_ms": self._latency_ms,
+            "error": self._error,
+            "uses_cameras": self._type.USES_CAMERAS,
+            "nt_inputs": {key: sub.topic for key, sub in self._inputs.items()},
+            "outputs": self._context.output_topics(),
+            "settings": dataclasses.asdict(self._settings.current),
+            "summary": summary,
+        }
+
+    def _set_active(self, active: bool, error: str = "") -> None:
+        self._active, self._error = active, error
+        self._active_pub.set(active)
+        self._error_pub.set(error)
+
     # ------------------------------------------------------------ worker thread
 
     def _run(self) -> None:
@@ -115,21 +149,21 @@ class PipelineRunner:
                 if settings is not None:
                     self._pipeline.configure(settings)
                 self._overlay = self._pipeline.process(inputs)
-                self._error_pub.set("")
-                self._active_pub.set(True)
+                self._set_active(True)
             except Exception as e:  # noqa: BLE001 - one bad frame must not kill the pipeline
                 log.exception("Pipeline %s failed", self.name)
-                self._error_pub.set(f"{type(e).__name__}: {e}")
-                self._active_pub.set(False)
+                self._set_active(False, f"{type(e).__name__}: {e}")
                 time.sleep(_IDLE_POLL_S)  # don't spin on a persistent error
                 continue
 
             calls += 1
             if inputs.frames is not None:
-                self._latency_pub.set((nt_now_us() - inputs.frames.capture_time_us) / 1000.0)
+                self._latency_ms = (nt_now_us() - inputs.frames.capture_time_us) / 1000.0
+                self._latency_pub.set(self._latency_ms)
             now = time.monotonic()
             if now - last_status >= _STATUS_PERIOD_S:
-                self._fps_pub.set(calls / (now - last_status))
+                self._fps = calls / (now - last_status)
+                self._fps_pub.set(self._fps)
                 calls, last_status = 0, now
         self._update_enabled(force_disable=True)
 
@@ -144,7 +178,7 @@ class PipelineRunner:
                 self._pipeline.configure(self._settings.current)
             except Exception as e:  # noqa: BLE001
                 log.exception("Pipeline %s failed to start; retrying in %.0f s", self.name, _START_RETRY_S)
-                self._error_pub.set(f"{type(e).__name__}: {e}")
+                self._set_active(False, f"{type(e).__name__}: {e}")
                 self._pipeline = None
                 self._next_start_attempt = time.monotonic() + _START_RETRY_S
                 return False
@@ -153,7 +187,8 @@ class PipelineRunner:
         elif not enabled and self._pipeline is not None:
             log.info("Disabling pipeline %s", self.name)
             pipeline, self._pipeline = self._pipeline, None
-            self._active_pub.set(False)
+            self._set_active(False)
+            self._fps, self._latency_ms = 0.0, None
             try:
                 pipeline.close()
             except Exception:  # noqa: BLE001
@@ -197,6 +232,9 @@ class PipelineManager:
     def submit(self, frames: FrameSet) -> None:
         for runner in self.runners:
             runner.submit(frames)
+
+    def snapshot(self) -> list[dict]:
+        return [runner.snapshot() for runner in self.runners]
 
     def overlays(self) -> list[Overlay]:
         return [o for o in (r.overlay for r in self.runners) if o is not None]

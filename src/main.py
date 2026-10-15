@@ -5,7 +5,7 @@
 The flow is:
 
     MultiCameraCapture --FrameSet--> PipelineManager --> one thread per pipeline --> NT (flatbuffers)
-                                 \\-> DebugStreams (MJPEG over HTTP)
+                                 \\-> DebugStreams --> DashboardServer (web page on stream_port)
 
 See README.md for the NetworkTables layout.
 """
@@ -26,6 +26,7 @@ import ntcore  # noqa: E402
 
 from capture.multi_camera_capture import CaptureSettings, MultiCameraCapture  # noqa: E402
 from config.local_config import LocalConfig, load_local_config  # noqa: E402
+from core.log_buffer import LogBuffer  # noqa: E402
 from core.nt_settings import NTSettings  # noqa: E402
 from core.status import StatusPublisher  # noqa: E402
 from core.time_sync import TimeSync  # noqa: E402
@@ -33,6 +34,7 @@ from pipelines import PIPELINE_TYPES  # noqa: E402
 from pipelines.pipeline import PipelineContext  # noqa: E402
 from pipelines.runner import PipelineManager, PipelineRunner  # noqa: E402
 from servers.calibration_upload_server import CalibrationUploadServer  # noqa: E402
+from servers.dashboard_server import DashboardServer  # noqa: E402
 from servers.debug_streams import DebugStreams  # noqa: E402
 
 log = logging.getLogger("c2")
@@ -64,7 +66,7 @@ def build_pipelines(
     return PipelineManager(runners)
 
 
-def run(config: LocalConfig) -> None:
+def run(config: LocalConfig, logs: LogBuffer) -> None:
     inst, time_sync = connect_nt(config)
     status = StatusPublisher(inst, config.device_id, config.num_cameras)
     status.start()
@@ -86,8 +88,8 @@ def run(config: LocalConfig) -> None:
     pipelines = build_pipelines(config, inst, time_sync)
     pipelines.start()
 
-    streams = DebugStreams(config.stream_port, config.num_cameras, pipelines.overlays)
-    streams.start()
+    streams = DebugStreams(config.num_cameras, pipelines.overlays)
+    DashboardServer(config, inst, time_sync, status, capture, pipelines, streams, logs).start()
     CalibrationUploadServer(port=config.stream_port + 10).start()
 
     while True:
@@ -116,7 +118,9 @@ def main() -> None:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    run(load_local_config(args.config, args.calibration_dir))
+    logs = LogBuffer()  # recent log lines for the dashboard
+    logging.getLogger().addHandler(logs)
+    run(load_local_config(args.config, args.calibration_dir), logs)
 
 
 if __name__ == "__main__":
