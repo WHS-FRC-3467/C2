@@ -42,10 +42,14 @@ class MjpegStream:
         handler.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
         handler.send_header("Cache-Control", "no-store")
         handler.end_headers()
+        # Each part is followed immediately by the next boundary: browsers only paint a
+        # part once they see the boundary after it, so otherwise the last frame of a
+        # stream that stops (e.g. after a calibration solve) would never appear.
         min_interval_s = 1.0 / max_fps if max_fps else 0.0
         last_sequence = -1
         last_sent_s = 0.0
         try:
+            handler.wfile.write(b"--frame\r\n")
             while True:
                 wait_s = last_sent_s + min_interval_s - time.monotonic()
                 if wait_s > 0:
@@ -57,11 +61,12 @@ class MjpegStream:
                 last_sequence, data = frame
                 last_sent_s = time.monotonic()
                 handler.wfile.write(
-                    b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n"
+                    b"Content-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n"
                     % len(data)
                 )
                 handler.wfile.write(data)
-                handler.wfile.write(b"\r\n")
+                handler.wfile.write(b"\r\n--frame\r\n")
+                handler.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             pass
 

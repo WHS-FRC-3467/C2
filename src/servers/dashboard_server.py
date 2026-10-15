@@ -1,7 +1,9 @@
 """The web dashboard on web_port: camera streams, pipelines, status, and logs.
 
-Read-only by design: the robot is the source of truth for configuration, and
-edits made here would be silently overwritten when it republishes.
+Pipelines and capture are read-only here: the robot is the source of truth
+for their configuration, and edits made here would be silently overwritten
+when it republishes. The camera calibration tool is the exception: it is
+local to the coprocessor.
 
     /                          the dashboard page (servers/dashboard/index.html)
     /api/status                everything on the page, as JSON
@@ -9,6 +11,12 @@ edits made here would be silently overwritten when it republishes.
     /stream                    every camera side by side, with overlays
     /cameras/<i>/stream        camera i with overlays
     /cameras/<i>/raw           camera i, no overlay
+
+    /calibration               the calibration page (servers/dashboard/calibration.html)
+    /calibration/stream        the camera being calibrated, with guidance drawn on it
+    /api/calibration           calibration state, as JSON
+    /api/calibration/board.png printable board (query: squares_x, squares_y, square_m, marker_m, dictionary)
+    POST /api/calibration/{start,stop,capture,solve,continue,save}
 Streams take ?width=<px> (downscale) and ?fps=<max>, to save bandwidth over
 the robot radio.
 """
@@ -24,10 +32,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import cv2
 import ntcore
 import numpy
 
+from calibration.board import Board, BoardSpec
+from calibration.mrcal_solver import MrcalError
+from calibration.session import CalibrationSession
 from capture.capture import Capture
+from config.calibration_store import CalibrationStore
 from config.local_config import LocalConfig
 from core.log_buffer import LogBuffer
 from core.status import StatusPublisher
@@ -39,6 +52,11 @@ from servers.mjpeg_server import MjpegStream
 log = logging.getLogger(__name__)
 
 _PAGE = Path(__file__).with_name("dashboard") / "index.html"
+_CALIBRATION_PAGE = Path(__file__).with_name("dashboard") / "calibration.html"
+_CALIBRATION_ACTION = re.compile(
+    r"^/api/calibration/(start|stop|capture|solve|continue|save)$"
+)
+_MAX_BODY_BYTES = 64 * 1024
 _CAMERA_ROUTE = re.compile(r"^/cameras/(\d+)/(stream|raw)$")
 _MAX_STRING = 300  # long settings (e.g. the tag layout JSON) are summarized
 
@@ -54,6 +72,8 @@ class DashboardServer:
         pipelines: PipelineManager,
         streams: DebugStreams,
         logs: LogBuffer,
+        calibrations: CalibrationStore,
+        calibration: CalibrationSession,
     ) -> None:
         self._config = config
         self._inst = inst
@@ -63,6 +83,9 @@ class DashboardServer:
         self._pipelines = pipelines
         self._streams = streams
         self._logs = logs
+        self._calibrations = calibrations
+        self.calibration = calibration
+        self.calibration_stream = MjpegStream(calibration.latest_overlay, 85)
 
     def start(self) -> None:
         server = _DashboardHTTPServer(self._config.web_port, self)
@@ -108,10 +131,32 @@ class DashboardServer:
                     "connected": health["cameras_connected"][i],
                     "calibration": _calibration_info(calibration, camera_size),
                 }
-                for i, calibration in enumerate(self._config.calibrations)
+                for i, calibration in enumerate(self._calibrations.all())
             ],
             "pipelines": self._pipelines.snapshot(),
         }
+
+    def calibration_action(self, action: str, body: dict) -> dict:
+        """Run a calibration tool action. Raises ValueError (or MrcalError) with a user-facing message."""
+        session = self.calibration
+        if action == "start":
+            board = (
+                BoardSpec(**body.get("board", {}))
+                if body.get("board")
+                else session.board_spec
+            )
+            session.start(int(body.get("camera", 0)), board)
+        elif action == "stop":
+            session.stop()
+        elif action == "capture":
+            session.capture_now()
+        elif action == "solve":
+            session.solve_now()
+        elif action == "continue":
+            session.continue_collecting()
+        elif action == "save":
+            return {"ok": True, "path": session.save()}
+        return {"ok": True}
 
     def logs_since(self, after_id: int) -> list[dict]:
         return self._logs.since(after_id)
@@ -156,6 +201,16 @@ class _RequestHandler(BaseHTTPRequestHandler):
         query = parse_qs(url.query)
         if url.path in ("/", "/index.html"):
             self._send(200, "text/html; charset=utf-8", _PAGE.read_bytes())
+        elif url.path == "/calibration":
+            self._send(200, "text/html; charset=utf-8", _CALIBRATION_PAGE.read_bytes())
+        elif url.path == "/api/calibration":
+            self._send_json(dashboard.calibration.snapshot())
+        elif url.path == "/api/calibration/board.png":
+            self._send_board_image(query, dashboard.calibration.board_spec)
+        elif url.path == "/calibration/stream":
+            dashboard.calibration_stream.serve(
+                self, width=_int(query, "width"), max_fps=_float(query, "fps")
+            )
         elif url.path == "/api/status":
             self._send_json(dashboard.status())
         elif url.path == "/api/logs":
@@ -164,6 +219,40 @@ class _RequestHandler(BaseHTTPRequestHandler):
             stream.serve(self, width=_int(query, "width"), max_fps=_float(query, "fps"))
         else:
             self.send_error(404)
+
+    def do_POST(self) -> None:
+        match = _CALIBRATION_ACTION.match(urlparse(self.path).path)
+        if match is None:
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > _MAX_BODY_BYTES:
+            self.send_error(413)
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+            self._send_json(self.dashboard.calibration_action(match.group(1), body))
+        except (ValueError, TypeError, MrcalError) as e:
+            self._send(
+                400,
+                "application/json",
+                json.dumps({"ok": False, "error": str(e)}).encode(),
+            )
+
+    def _send_board_image(self, query: dict, default: BoardSpec) -> None:
+        try:
+            spec = BoardSpec(
+                squares_x=_int(query, "squares_x") or default.squares_x,
+                squares_y=_int(query, "squares_y") or default.squares_y,
+                square_m=_float(query, "square_m") or default.square_m,
+                marker_m=_float(query, "marker_m") or default.marker_m,
+                dictionary=query.get("dictionary", [default.dictionary])[0],
+            )
+            ok, png = cv2.imencode(".png", Board(spec).image())
+        except ValueError as e:
+            self.send_error(400, str(e))
+            return
+        self._send(200, "image/png", png.tobytes())
 
     def _send_json(self, data: object) -> None:
         self._send(200, "application/json", json.dumps(_jsonable(data)).encode())

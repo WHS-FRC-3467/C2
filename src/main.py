@@ -27,11 +27,13 @@ sys.path.insert(0, str(REPO_DIR / "schema"))
 import ntcore  # noqa: E402
 import numpy  # noqa: E402
 
+from calibration.session import CalibrationSession  # noqa: E402
 from capture.capture import Capture  # noqa: E402
 from capture.multi_camera_capture import (
     CaptureSettings,
     MultiCameraCapture,
 )  # noqa: E402
+from config.calibration_store import CalibrationStore  # noqa: E402
 from config.local_config import (
     CameraCalibration,
     LocalConfig,
@@ -67,12 +69,15 @@ def connect_nt(config: LocalConfig) -> tuple[ntcore.NetworkTableInstance, TimeSy
 
 
 def build_pipelines(
-    config: LocalConfig, inst: ntcore.NetworkTableInstance, time_sync: TimeSync
+    config: LocalConfig,
+    inst: ntcore.NetworkTableInstance,
+    calibrations: CalibrationStore,
+    time_sync: TimeSync,
 ) -> PipelineManager:
     runners = []
     for pipeline_type in PIPELINE_TYPES:
         context = PipelineContext(
-            inst, config.device_id, pipeline_type.NAME, config.calibrations, time_sync
+            inst, config.device_id, pipeline_type.NAME, calibrations, time_sync
         )
         enabled = config.pipelines_enabled.get(pipeline_type.NAME, False)
         runners.append(
@@ -98,9 +103,12 @@ def with_simulated_calibrations(config: LocalConfig) -> LocalConfig:
     return dataclasses.replace(config, calibrations=tuple(calibrations))
 
 
-def run(config: LocalConfig, logs: LogBuffer, simulate: bool) -> None:
+def run(
+    config: LocalConfig, calibration_dir: Path, logs: LogBuffer, simulate: bool
+) -> None:
     if simulate:
         config = with_simulated_calibrations(config)
+    calibrations = CalibrationStore(calibration_dir, config.calibrations)
     inst, time_sync = connect_nt(config)
     status = StatusPublisher(inst, config.device_id, config.num_cameras)
     status.start()
@@ -129,12 +137,24 @@ def run(config: LocalConfig, logs: LogBuffer, simulate: bool) -> None:
     else:
         capture = MultiCameraCapture(config.num_cameras)
 
-    pipelines = build_pipelines(config, inst, time_sync)
+    pipelines = build_pipelines(config, inst, calibrations, time_sync)
     pipelines.start()
 
     streams = DebugStreams(config.num_cameras, pipelines.overlays)
+    calibration = CalibrationSession(
+        config.num_cameras, calibrations, calibration_dir / "calibration_board.json"
+    )
     DashboardServer(
-        config, inst, time_sync, status, capture, pipelines, streams, logs
+        config,
+        inst,
+        time_sync,
+        status,
+        capture,
+        pipelines,
+        streams,
+        logs,
+        calibrations,
+        calibration,
     ).start()
 
     while True:
@@ -150,6 +170,7 @@ def run(config: LocalConfig, logs: LogBuffer, simulate: bool) -> None:
         status.frame_received(frames)
         pipelines.submit(frames)
         streams.set_frames(frames)
+        calibration.submit(frames)
 
 
 def main() -> None:
@@ -172,7 +193,12 @@ def main() -> None:
     )
     logs = LogBuffer()  # recent log lines for the dashboard
     logging.getLogger().addHandler(logs)
-    run(load_local_config(args.config, args.calibration_dir), logs, simulate=args.sim)
+    run(
+        load_local_config(args.config, args.calibration_dir),
+        args.calibration_dir,
+        logs,
+        simulate=args.sim,
+    )
 
 
 if __name__ == "__main__":

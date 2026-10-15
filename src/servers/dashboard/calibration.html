@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C2 Calibration</title>
+<!-- Self-contained on purpose: no CDNs, so it works on a field network with no internet. -->
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --border: #2a2f3a;
+    --text: #e6e8ec; --muted: #8b93a3; --accent: #5aa9ff;
+    --ok: #3fbf6f; --warn: #e6b450; --bad: #ef5b5b; --off: #5b6170;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 10px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  main { padding: 16px; display: grid; gap: 16px; max-width: 1500px; margin: 0 auto;
+         grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 10px; } }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  section > h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--off); color: #fff; }
+  .badge.ok { background: var(--ok); } .badge.warn { background: var(--warn); color: #222; } .badge.bad { background: var(--bad); }
+  .view { position: relative; background: #000; border-radius: 6px; overflow: hidden; aspect-ratio: 1600 / 1304; }
+  .view img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .view .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 20px; }
+  .message { font-size: 18px; font-weight: 600; margin: 10px 0 2px; }
+  .instruction { color: var(--muted); margin-bottom: 8px; }
+  .legend { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .legend span { white-space: nowrap; margin-right: 12px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 2px; }
+  input, select { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+                  border-radius: 6px; padding: 5px 8px; font: inherit; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  button { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+           padding: 6px 12px; font: inherit; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0b1220; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 0; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .error { background: #3a1d20; border: 1px solid #6b2b30; color: #ffb4b4; border-radius: 6px; padding: 6px 8px;
+           margin: 8px 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 240px; overflow: auto; }
+  .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .subhead { color: var(--muted); font-size: 12px; margin: 12px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  a { color: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>C2 · camera calibration</h1>
+  <span id="phase" class="badge">idle</span>
+  <a href="/" style="margin-left:auto">← dashboard</a>
+</header>
+
+<div id="page-error" class="error" style="margin:8px 16px" hidden></div>
+<main>
+  <section>
+    <h2>Camera <span id="cam-label"></span></h2>
+    <div class="view">
+      <div class="placeholder" id="placeholder">Choose a camera and board, then press Start.</div>
+      <img id="stream" alt="Calibration view" hidden>
+    </div>
+    <div class="message" id="message"></div>
+    <div class="instruction" id="instruction"></div>
+    <div class="legend">
+      <span><span class="dot" style="background:#3fbf6f"></span>where to hold the board</span>
+      <span><span class="dot" style="background:#0078ff"></span>corners detected now</span>
+      <span><span class="dot" style="background:#ffc800"></span>corners captured so far (cover the whole image)</span>
+    </div>
+    <div class="buttons" id="collect-buttons" hidden>
+      <button id="capture">Capture this frame</button>
+      <button id="solve">Solve now</button>
+      <button id="stop">Stop</button>
+    </div>
+  </section>
+
+  <div style="display:grid; gap:16px; align-content:start; min-width:0">
+    <section id="result" hidden>
+      <h2>Result <span id="verdict" class="badge"></span></h2>
+      <div class="error" id="solve-error" hidden></div>
+      <div id="result-body">
+        <table id="compare"></table>
+        <div class="subhead">Quality</div>
+        <dl class="kv" id="quality"></dl>
+      </div>
+      <div class="buttons">
+        <button class="primary" id="save">Save calibration</button>
+        <button id="continue">Collect more</button>
+        <button id="discard">Discard</button>
+      </div>
+      <p class="note" id="save-note"></p>
+    </section>
+    <section id="setup">
+      <h2>Setup</h2>
+      <label for="camera">Camera</label>
+      <select id="camera"></select>
+      <div class="subhead">Board (ChArUco)</div>
+      <div class="row">
+        <div><label for="squares_x">Squares across</label><input id="squares_x" type="number" min="3" step="1"></div>
+        <div><label for="squares_y">Squares down</label><input id="squares_y" type="number" min="3" step="1"></div>
+      </div>
+      <div class="row">
+        <div><label for="square_mm">Square size, measured (mm)</label><input id="square_mm" type="number" min="1" step="0.01"></div>
+        <div><label for="marker_mm">Marker size, measured (mm)</label><input id="marker_mm" type="number" min="1" step="0.01"></div>
+      </div>
+      <label for="dictionary">Marker dictionary</label>
+      <select id="dictionary">
+        <option>DICT_4X4_1000</option><option>DICT_5X5_1000</option><option>DICT_6X6_1000</option><option>DICT_7X7_1000</option>
+      </select>
+      <p class="note">Print the board at 100% scale and mount it on something rigid and flat, then measure a square
+        with calipers. <a id="board-link" href="#" target="_blank">Download this board (PNG)</a></p>
+      <div class="buttons"><button class="primary" id="start">Start</button></div>
+      <div class="error" id="setup-error" hidden></div>
+      <p class="note">The final solve uses <a href="https://mrcal.secretsauce.net" target="_blank">mrcal</a>
+        (install on the coprocessor: <code>sudo apt install mrcal</code>). The camera's exposure is set by the
+        robot; if the board isn't detected, it may be too dark.</p>
+    </section>
+
+    <section id="progress" hidden>
+      <h2>Progress</h2>
+      <dl class="kv" id="progress-kv"></dl>
+      <div class="subhead">Parameters converged</div>
+      <div class="chips" id="chips"></div>
+      <div class="subhead">Live estimate (OpenCV, for guidance only)</div>
+      <table id="estimate"></table>
+    </section>
+
+  </div>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = (v, d = 2) => (v === null || v === undefined ? "–" : Number(v).toFixed(d));
+const kv = (pairs) => pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("");
+
+let formFilled = false;
+let streamCamera = null;
+
+async function post(action, body = {}) {
+  const res = await fetch(`/api/calibration/${action}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+  if (!data.ok) throw new Error(data.error || "failed");
+  return data;
+}
+
+function boardFromForm() {
+  return {
+    squares_x: Number($("squares_x").value), squares_y: Number($("squares_y").value),
+    square_m: Number($("square_mm").value) / 1000, marker_m: Number($("marker_mm").value) / 1000,
+    dictionary: $("dictionary").value,
+  };
+}
+function updateBoardLink() {
+  $("board-link").href = "/api/calibration/board.png?" + new URLSearchParams(boardFromForm());
+}
+["squares_x", "squares_y", "square_mm", "marker_mm", "dictionary"].forEach((id) => $(id).addEventListener("input", updateBoardLink));
+
+$("start").onclick = async () => {
+  $("setup-error").hidden = true;
+  try { await post("start", { camera: Number($("camera").value), board: boardFromForm() }); }
+  catch (e) { $("setup-error").textContent = e.message; $("setup-error").hidden = false; }
+  poll(false);
+};
+const act = (action) => async () => { try { await post(action); } catch (e) { alert(e.message); } poll(false); };
+$("capture").onclick = act("capture");
+$("solve").onclick = act("solve");
+$("stop").onclick = act("stop");
+$("continue").onclick = act("continue");
+$("discard").onclick = act("stop");
+$("save").onclick = async () => {
+  try { const r = await post("save"); $("save-note").textContent = `Saved ${r.path}`; } catch (e) { alert(e.message); }
+  poll(false);
+};
+
+function setStream(active, camera) {
+  const img = $("stream");
+  if (active && streamCamera === null) {
+    img.src = "/calibration/stream?width=1000&fps=10";
+    img.hidden = false; $("placeholder").hidden = true; streamCamera = camera;
+  } else if (!active && streamCamera !== null) {
+    img.removeAttribute("src"); img.hidden = true; $("placeholder").hidden = false; streamCamera = null;
+  }
+}
+
+function render(s, status) {
+  const phase = s.phase;
+  const phaseKind = { idle: "", collecting: "warn", solving: "warn", solved: "ok", failed: "bad" }[phase];
+  $("phase").className = `badge ${phaseKind}`; $("phase").textContent = phase;
+  $("cam-label").textContent = phase === "idle" ? "" : s.camera;
+
+  if (!formFilled) {
+    const b = s.board;
+    $("squares_x").value = b.squares_x; $("squares_y").value = b.squares_y;
+    $("square_mm").value = +(b.square_m * 1000).toFixed(3); $("marker_mm").value = +(b.marker_m * 1000).toFixed(3);
+    $("dictionary").value = b.dictionary;
+    const requested = new URLSearchParams(location.search).get("camera");
+    if (requested !== null) $("camera").value = requested;
+    updateBoardLink(); formFilled = true;
+  }
+
+  const busy = phase !== "idle";
+  if (busy) $("camera").value = String(s.camera);  // show the camera actually being calibrated
+  $("setup").querySelectorAll("input,select,#start").forEach((el) => (el.disabled = busy));
+  $("setup").hidden = busy;  // can't change setup mid-session; Stop/Discard brings it back
+  // Keep showing the last frame after solving: it shows how much of the image was covered.
+  setStream(busy, s.camera);
+  $("collect-buttons").hidden = phase !== "collecting";
+  $("message").textContent = s.message || "";
+  const g = s.guidance;
+  $("instruction").textContent = phase === "collecting" && g ? g.instruction : "";
+
+  $("progress").hidden = !g;
+  if (g) {
+    $("progress-kv").innerHTML = kv([
+      ["keyframes", `${g.keyframes}`],
+      ["corners detected", `${s.board_corners_detected} / ${s.board_corners_total}`],
+      ["live RMS error", g.rms_error_px == null ? "–" : `${num(g.rms_error_px)} px`],
+      ["improving", g.target_param || "–"],
+    ]);
+    $("chips").innerHTML = Object.entries(g.params_converged)
+      .map(([n, ok]) => `<span class="badge ${ok ? "ok" : ""}">${n}</span>`).join("");
+    const names = ["fx", "fy", "cx", "cy"];
+    $("estimate").innerHTML = "<tr><th></th><th>value</th><th>± std</th></tr>" + names
+      .map((n) => `<tr><td>${n}</td><td>${num(g.intrinsics[n], 1)}</td><td>${num(g.intrinsics_std[n])}</td></tr>`).join("");
+  }
+
+  const showResult = phase === "solved" || phase === "failed";
+  $("result").hidden = !showResult;
+  $("solve-error").hidden = !s.error; $("solve-error").textContent = s.error || "";
+  $("result-body").hidden = !s.result;
+  $("save").disabled = phase !== "solved";
+  if (s.result) {
+    const r = s.result, p = s.previous;
+    $("verdict").className = `badge ${r.good ? "ok" : "warn"}`;
+    $("verdict").textContent = r.good ? "good" : "uncertain";
+    const row = (name, now, before, d = 2) => `<tr><td>${name}</td><td>${num(now, d)}</td><td>${before == null ? "–" : num(before, d)}</td></tr>`;
+    $("compare").innerHTML = "<tr><th></th><th>new (mrcal)</th><th>current</th></tr>" +
+      row("fx", r.fx, p && p.fx) + row("fy", r.fy, p && p.fy) + row("cx", r.cx, p && p.cx) + row("cy", r.cy, p && p.cy) +
+      `<tr><td>image size</td><td>${r.image_size.join("×")}</td><td>${p && p.image_size[0] ? p.image_size.join("×") : "–"}</td></tr>` +
+      row("RMS error, px", r.rms_error_px, p && p.rms_error_px, 3);
+    const u = r.uncertainty_px;
+    $("quality").innerHTML = kv([
+      ["reprojection RMS / worst", `${num(r.rms_error_px, 3)} / ${num(r.worst_error_px)} px`],
+      ["outlier corners", `${r.outliers} of ${r.points}`],
+      ["projection uncertainty (1σ)", `center ${num(u.center)} · median ${num(u.median)} · worst ${num(u.worst)} px`],
+      ["board flatness (mrcal)", r.board_warp_mm ? r.board_warp_mm.map((w) => `${num(w)} mm`).join(", ") : "–"],
+    ]);
+  }
+  if (phase === "idle" && s.saved_path) $("save-note").textContent = `Saved ${s.saved_path}`;
+}
+
+async function poll(loop = true) {
+  try {
+    const [s, status] = await Promise.all([
+      fetch("/api/calibration", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/status", { cache: "no-store" }).then((r) => r.json()),
+    ]);
+    if ($("camera").options.length !== status.device.num_cameras) {
+      $("camera").innerHTML = status.cameras.map((c) =>
+        `<option value="${c.index}">Camera ${c.index}${c.calibration.loaded ? "" : " (not calibrated)"}</option>`).join("");
+    }
+    render(s, status);
+    $("page-error").hidden = true;
+  } catch (e) {
+    console.error("calibration page update failed:", e);
+    $("page-error").textContent = `Can't update the page: ${e.message || e}`;
+    $("page-error").hidden = false;
+  }
+  if (loop) setTimeout(poll, 400);
+}
+poll();
+</script>
+</body>
+</html>

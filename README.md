@@ -20,6 +20,7 @@ MultiCameraCapture ──FrameSet──► PipelineManager ──► PipelineRun
 cmake -S src/pipelines/apriltag/aruco_nano -B src/pipelines/apriltag/aruco_nano/build
 cmake --build src/pipelines/apriltag/aruco_nano/build
 pip install -r requirements.txt
+sudo apt install mrcal            # only needed for camera calibration
 
 python src/main.py                # run from the repo root (config.json and calibrations live here)
 ```
@@ -36,7 +37,7 @@ python src/main.py                # run from the repo root (config.json and cali
 | `pipelines_enabled` | default `enabled` per pipeline, e.g. `{"apriltag": true}` |
 | `time_sync_probe_interval_s` | see [Timestamps](#timestamps). Default 10, 0 disables |
 
-Per-camera intrinsics come from `calibration_<i>.yml` in the directory C2 is started from (`--calibration-dir` to change). Copy them onto the coprocessor (e.g. with `scp`) and restart C2.
+Per-camera intrinsics come from `calibration_<i>.yml` in the directory C2 is started from (`--calibration-dir` to change). Make them with the [calibration tool](#camera-calibration) in the dashboard.
 
 ## Code map
 
@@ -57,9 +58,10 @@ project builds its Java classes from `C2/schema/*.fbs` (its git submodule).
 | `src/pipelines/apriltag/` | the AprilTag pipeline (detector + its aruco_nano C++ library, tag layout, solver, encoder) |
 | `src/servers/` | web dashboard (`dashboard_server.py` + `dashboard/index.html`), MJPEG streams |
 | `src/sim/` | simulation mode: renders the cameras from the robot sim's true pose |
+| `src/calibration/` | guided camera calibration (adapted from Pose Calib) with mrcal as the solver |
+| `src/config/calibration_store.py` | the current calibrations; replaced live when a new one is saved |
 | `src/core/log_buffer.py` | recent log lines, shown on the dashboard |
 | `schema/*.fbs` | flatbuffer schemas; Python is generated into `schema/<namespace>/` |
-| `tests/` | `python -m unittest discover -s tests -t .` |
 
 ## Dashboard
 
@@ -77,13 +79,59 @@ Open `http://<coprocessor>:<web_port>/` (port 5400 by default) in a browser. It 
   and the drift correction currently applied.
 - **Log:** recent log lines, including errors with tracebacks.
 
-The page is read-only: configure C2 from the robot (or a dashboard such as
+Apart from the calibration tool, the page is read-only: configure C2 from the robot (or a dashboard such as
 AdvantageScope/Elastic) over NT. It is self-contained, with no internet access
 needed. The same data is available as JSON at `/api/status` and `/api/logs?after=<id>`.
 
 Streams are also available directly: `/stream` (every camera, with
 overlays), `/cameras/<i>/stream` (with overlays), and `/cameras/<i>/raw`. Each
 takes `?width=<px>` and `?fps=<max>`.
+
+## Camera calibration
+
+Open **calibrate cameras** on the dashboard (`/calibration`). It calibrates
+one camera at a time, inside C2, on the full-quality frames.
+
+1. Print the board at 100% scale: the page offers the exact image to download
+   for the board settings entered. The default is the 12x9 ChArUco board in
+   `charuco_board.png` (`DICT_5X5_1000`). Mount it on something rigid and flat,
+   then measure a square and a marker with calipers and enter the sizes.
+2. Pick the camera and press **Start**. A green board shows where to hold the
+   real one. Match it and hold still; frames are captured automatically. Yellow
+   dots show the coverage so far: aim to cover the whole image, corners included.
+3. When enough data is collected, C2 solves with
+   [mrcal](https://mrcal.secretsauce.net) and shows the result next to the
+   current calibration, with reprojection error, outliers, projection
+   uncertainty, and how warped the board was. **Save** writes
+   `calibration_<i>.yml` (the old file is kept as `calibration_<i>.previous.yml`)
+   and the AprilTag pipeline uses it from its next frame, with no restart.
+   **Collect more** continues if the result is marked uncertain.
+
+mrcal is required (`sudo apt install mrcal`); calibration refuses to start
+without it. It's only packaged for the system Python, so C2 runs its
+command-line solver as a separate process instead of importing it. The lens
+model is `LENSMODEL_OPENCV8`, the same 8-coefficient model OpenCV's solvePnP
+uses.
+
+How it works: guidance (which pose to ask for next, so each keyframe shrinks
+the least-certain parameter) comes from
+[Pose Calib](https://github.com/paroj/pose_calib) (Rojtberg & Kuijper, ISMAR
+2018), using fast OpenCV solves. mrcal does the final solve, modelling the
+board's deformation and rejecting outlier corners. Compared to the standalone
+Pose Calib tool this used to be:
+
+- image size comes from the camera, not a config file;
+- frames are full quality (no JPEG stream), and "hold still" is only judged
+  between two different frames;
+- keyframes far worse than the rest (blur, misdetection) are dropped;
+- stopping also requires 10+ keyframes and under 1 px uncertainty on fx, fy,
+  cx, cy, and mrcal's projection uncertainty is reported;
+- it works with current OpenCV (Pose Calib needed the legacy ChArUco API
+  and assumed the old board orientation).
+
+Tested with a virtual user rendering the board through a known lens
+(1385/1383 px focal length, strong distortion): 11-12 keyframes, mrcal's focal
+lengths within 0.2-0.8 px of the truth, RMS error 0.22-0.24 px.
 
 ## Simulation mode
 
@@ -252,3 +300,14 @@ would exist without the correction.
 Each pipeline gets its own thread and is only constructed while enabled,
 so a disabled pipeline costs nothing. If a pipeline falls behind, it skips
 to the newest frame.
+
+## License
+
+AGPL-3.0 (see `LICENSE`). C2 includes code adapted from Pose Calib by Pavel
+Rojtberg, which is AGPL-3.0. Because the dashboard is served over a network,
+anyone using it is entitled to C2's source code.
+
+If you use the calibration tool in published work, please cite Pose Calib:
+P. Rojtberg and A. Kuijper, "Efficient Pose Selection for Interactive Camera
+Calibration", ISMAR 2018, doi:10.1109/ISMAR.2018.00026.
+

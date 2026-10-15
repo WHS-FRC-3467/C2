@@ -68,23 +68,10 @@ def sparse_undistort_map(K, sz, dist, Knew, step=1):
         pts3d = cv2.convertPointsToHomogeneous(pts3d).reshape(-1, 3)
         dpts = cv2.projectPoints(pts3d, zero, zero, K, dist)[0]
 
-    shape = (sz[0] // step, sz[1] // step, 2)
+    # ceil: range(0, n, step) includes a partial last step when n % step != 0
+    shape = (-(-sz[0] // step), -(-sz[1] // step), 2)
 
     return dpts.reshape(-1, 2).reshape(shape), pts.reshape(shape)
-
-
-def get_diff_heatmap(img1, img2, colormap=True):
-    """
-    creates a heatmap from two point images
-    """
-    sz = img1.shape[:2]
-    l2diff = la.norm((img1 - img2).reshape(-1, 2), axis=1).reshape(sz).T
-
-    if colormap:
-        l2diff = cv2.normalize(l2diff, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        l2diff = cv2.applyColorMap(l2diff, cv2.COLORMAP_JET)
-
-    return l2diff, l2diff.max()
 
 
 def loc_from_dist(pts, dpts, mask=None, lower=False, thres=1.0):
@@ -98,9 +85,12 @@ def loc_from_dist(pts, dpts, mask=None, lower=False, thres=1.0):
     """
     diff = la.norm((pts - dpts).reshape(-1, 2), axis=1)
     diff = diff.reshape(pts.shape[0:2]).T
-    diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    diff = cv2.normalize(
+        diff, np.empty(diff.shape, np.uint8), 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U
+    )
 
     bounds = None
+    thres_img = None
 
     while not bounds and thres >= 0 and thres <= 1:
         if lower:

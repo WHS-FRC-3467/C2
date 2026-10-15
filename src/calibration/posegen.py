@@ -11,7 +11,7 @@ import numpy.linalg as la
 
 import cv2
 
-from distvis import sparse_undistort_map, loc_from_dist
+from calibration.distvis import sparse_undistort_map, loc_from_dist
 
 
 def gen_bin(s, e):
@@ -37,7 +37,7 @@ def unproject(p, K, cdist, Z):
     return np.array([p[0], p[1], 1]) * Z
 
 
-def oribital_pose(bbox, rx, ry, Z, rz=0):
+def oribital_pose(bbox, rx, ry, Z, rz=0.0):
     """
     @param bbox: object bounding box. note: assumes planar object with virtual Z dimension.
     @param rx: rotation around x axis in rad
@@ -162,7 +162,8 @@ class PoseGeneratorDist:
             ),
         )
 
-        self.mask = np.zeros(np.array(img_size) // self.SUBSAMPLE, dtype=np.uint8).T
+        # ceil, to match the sampling grid when the size isn't a multiple of SUBSAMPLE
+        self.mask = np.zeros(-(-np.array(img_size) // self.SUBSAMPLE), dtype=np.uint8).T
         self.sgn = 1
 
     def compute_distortion(self, K, cdist, subsample=1):

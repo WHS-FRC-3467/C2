@@ -44,6 +44,7 @@ from typing import ClassVar, Generic, TypeVar
 import ntcore
 import numpy
 
+from config.calibration_store import CalibrationStore
 from config.local_config import CameraCalibration
 from core.frames import FrameSet
 from core.nt_io import FlatbufferMessage, FlatbufferPublisher
@@ -83,15 +84,20 @@ class PipelineContext:
         inst: ntcore.NetworkTableInstance,
         device_id: str,
         pipeline_name: str,
-        calibrations: Sequence[CameraCalibration | None],
+        calibrations: CalibrationStore,
         time_sync: TimeSync,
     ) -> None:
         self.inst = inst
         self.device_id = device_id
-        self.calibrations = tuple(calibrations)
+        self._calibrations = calibrations
         self.time_sync = time_sync
         self.table_path = f"/{device_id}/pipelines/{pipeline_name}"
         self._outputs: dict[str, FlatbufferPublisher] = {}
+
+    @property
+    def calibrations(self) -> tuple[CameraCalibration | None, ...]:
+        """Current per-camera calibrations. Can change while running (the calibration tool)."""
+        return self._calibrations.all()
 
     @property
     def num_cameras(self) -> int:

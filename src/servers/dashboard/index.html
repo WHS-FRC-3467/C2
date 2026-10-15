@@ -71,6 +71,7 @@
   <span class="stat">uptime <b id="uptime">–</b></span>
   <span class="stat">capture <b id="capture-fps">–</b> fps</span>
   <span class="stat">time sync <b id="sync">–</b></span>
+  <span class="stat" style="margin-left:auto"><a href="/calibration">calibrate cameras</a></span>
 </header>
 
 <main>
@@ -187,7 +188,7 @@ function renderCameras(status) {
     if (!c.loaded) calib = badge("no calibration", "bad");
     else if (c.matches_resolution === false) calib = badge(`calibrated at ${c.image_size.join("×")}`, "warn");
     else calib = badge("calibrated", "ok");
-    el.querySelector(".calib").innerHTML = calib;
+    el.querySelector(".calib").innerHTML = `<a href="/calibration?camera=${cam.index}" title="Calibrate camera ${cam.index}">${calib}</a>`;
     const t = tagSummary && tagSummary[cam.index];
     let foot = "";
     if (t) {
