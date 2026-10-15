@@ -56,6 +56,7 @@ project builds its Java classes from `C2/schema/*.fbs` (its git submodule).
 | `src/pipelines/runner.py` | runs pipelines; enable/disable/config/status over NT |
 | `src/pipelines/apriltag/` | the AprilTag pipeline (detector + its aruco_nano C++ library, tag layout, solver, encoder) |
 | `src/servers/` | web dashboard (`dashboard_server.py` + `dashboard/index.html`), MJPEG streams |
+| `src/sim/` | simulation mode: renders the cameras from the robot sim's true pose |
 | `src/core/log_buffer.py` | recent log lines, shown on the dashboard |
 | `schema/*.fbs` | flatbuffer schemas; Python is generated into `schema/<namespace>/` |
 | `tests/` | `python -m unittest discover -s tests -t .` |
@@ -83,6 +84,73 @@ needed. The same data is available as JSON at `/api/status` and `/api/logs?after
 Streams are also available directly: `/stream` (every camera, with
 overlays), `/cameras/<i>/stream` (with overlays), and `/cameras/<i>/raw`. Each
 takes `?width=<px>` and `?fps=<max>`.
+
+## Simulation mode
+
+```sh
+python src/main.py --sim
+```
+
+Instead of reading the camera, C2 renders what each camera would see of
+the field's AprilTags, from the robot sim's **true pose**. Everything else
+runs exactly as on the robot: the real AprilTag pipeline, timestamps, NT
+output and the dashboard (which shows a SIMULATION badge). Cameras without a
+`calibration_<i>.yml` get a default 70° pinhole camera.
+
+**What the robot sim must publish** (C2 already reads the field from the
+AprilTag pipeline's `tag_layout` / `fiducial_size_m` config):
+
+```java
+// Once: where each camera is mounted, indexed by camera (same order as the module).
+NetworkTableInstance.getDefault().getStructArrayTopic("/dsv0/sim/robot_to_camera", Transform3d.struct)
+    .publish().set(new Transform3d[] {robotToCamera0, robotToCamera1, robotToCamera2, robotToCamera3});
+
+// Every loop (simulationPeriodic): the TRUE pose from the physics sim, not the estimator's.
+truePosePublisher = NetworkTableInstance.getDefault()
+    .getStructTopic("/dsv0/sim/true_pose", Pose3d.struct).publish(PubSubOption.sendAll(true));
+truePosePublisher.set(new Pose3d(driveSimulation.getSimulatedDriveTrainPose()));
+```
+
+Keep the publisher objects in fields: if one is garbage-collected, its topic
+disappears.
+
+**Timing is exact.** Each frame is captured `pose_lag_ms` (50 ms) in the past,
+so the true pose at that instant has already arrived and is interpolated, and
+the frame is stamped with that capture time. To score vision, compare each
+result with your true pose **at the result's NT timestamp**. Measured with a
+fake robot driving 2 m/s: median error 0.3 cm at the timestamp, versus 10 cm
+when the comparison is shifted ±50 ms. In WPILib simulation the NT clock is
+the simulated FPGA clock, so this matches `Timer.getFPGATimestamp()`. If the
+sim is paused or stepped, frames stop until it resumes.
+
+**Imperfections** are NT settings at `/dsv0/sim/config/<name>`, live-tunable
+from a dashboard. They act on the image and on the hidden "true" hardware,
+never on the output, so the real detector and solver react to them as they
+would on a robot.
+
+| setting | default | effect |
+| --- | --- | --- |
+| `fps` | 45 | frame rate (rendering may not keep up; frames are still stamped exactly) |
+| `image_noise_std` | 2 | sensor noise, gray levels |
+| `blur_sigma_px` | 0 | defocus blur |
+| `exposure_ms`, `motion_blur_samples` | 0, 4 | motion blur: frames averaged over the exposure (costs `samples`× rendering) |
+| `lens_distortion` | true | render through each camera's calibrated distortion |
+| `mount_error_m`, `mount_error_deg` | 0 | each camera's true mount differs from `robot_to_camera` by this much (std dev per axis) |
+| `focal_error_percent` | 0 | true focal length differs from the calibration (std dev) |
+| `error_seed` | 1 | fixes the random mount and focal errors; change it to get a different "robot" |
+| `extra_latency_ms` | 0 | delivery delay (timestamps unaffected) |
+| `drop_probability` | 0 | chance a frame is never delivered |
+| `timestamp_error_ms`, `timestamp_jitter_ms` | 0 | constant and random error added to frame timestamps |
+| `pose_lag_ms` | 50 | how far in the past frames are captured (must exceed robot loop + NT latency) |
+
+Things the sim revealed with a perfect camera on the 2025 field: with 3 or
+more tags the error is about 0.2 cm, but **two small, distant tags (5 m and
+beyond) give errors of tens of cm, up to about 1 m**. Single distant tags
+often pick the wrong ambiguous solution. Weight or filter vision by tag
+count and distance on the robot.
+
+Performance on a 12-core laptop, 4 cameras at 1280×800: about 20–28 fps,
+and about 11 fps with motion blur on.
 
 ## NetworkTables layout
 

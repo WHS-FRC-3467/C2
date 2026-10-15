@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, urlparse
 import ntcore
 import numpy
 
-from capture.multi_camera_capture import MultiCameraCapture
+from capture.capture import Capture
 from config.local_config import LocalConfig
 from core.log_buffer import LogBuffer
 from core.status import StatusPublisher
@@ -50,7 +50,7 @@ class DashboardServer:
         inst: ntcore.NetworkTableInstance,
         time_sync: TimeSync,
         status: StatusPublisher,
-        capture: MultiCameraCapture,
+        capture: Capture,
         pipelines: PipelineManager,
         streams: DebugStreams,
         logs: LogBuffer,

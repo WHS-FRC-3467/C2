@@ -1,6 +1,7 @@
 """C2 entry point: capture from the multi-camera module and run pipelines.
 
     python src/main.py [--config config.json]     (run from the repo root)
+    python src/main.py --sim                       (render cameras from the robot sim's true pose)
 
 The flow is:
 
@@ -13,6 +14,7 @@ See README.md for the NetworkTables layout.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import sys
 import time
@@ -23,9 +25,11 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_DIR / "schema"))
 
 import ntcore  # noqa: E402
+import numpy  # noqa: E402
 
+from capture.capture import Capture  # noqa: E402
 from capture.multi_camera_capture import CaptureSettings, MultiCameraCapture  # noqa: E402
-from config.local_config import LocalConfig, load_local_config  # noqa: E402
+from config.local_config import CameraCalibration, LocalConfig, load_local_config  # noqa: E402
 from core.log_buffer import LogBuffer  # noqa: E402
 from core.nt_settings import NTSettings  # noqa: E402
 from core.status import StatusPublisher  # noqa: E402
@@ -35,6 +39,7 @@ from pipelines.pipeline import PipelineContext  # noqa: E402
 from pipelines.runner import PipelineManager, PipelineRunner  # noqa: E402
 from servers.dashboard_server import DashboardServer  # noqa: E402
 from servers.debug_streams import DebugStreams  # noqa: E402
+from sim.simulated_capture import SimulatedCapture, default_intrinsics  # noqa: E402
 
 log = logging.getLogger("c2")
 
@@ -65,7 +70,21 @@ def build_pipelines(
     return PipelineManager(runners)
 
 
-def run(config: LocalConfig, logs: LogBuffer) -> None:
+def with_simulated_calibrations(config: LocalConfig) -> LocalConfig:
+    """Give cameras without a calibration file a plausible one, so the pipeline can run in sim."""
+    width, height = config.camera_resolution_width, config.camera_resolution_height
+    calibrations = []
+    for i, calibration in enumerate(config.calibrations):
+        if calibration is None:
+            log.info("Simulation: camera %d has no calibration; using a default 70 deg pinhole", i)
+            calibration = CameraCalibration(default_intrinsics(width, height), numpy.zeros((1, 5)), width, height)
+        calibrations.append(calibration)
+    return dataclasses.replace(config, calibrations=tuple(calibrations))
+
+
+def run(config: LocalConfig, logs: LogBuffer, simulate: bool) -> None:
+    if simulate:
+        config = with_simulated_calibrations(config)
     inst, time_sync = connect_nt(config)
     status = StatusPublisher(inst, config.device_id, config.num_cameras)
     status.start()
@@ -82,7 +101,12 @@ def run(config: LocalConfig, logs: LogBuffer) -> None:
             camera_gain=config.camera_gain,
         ),
     )
-    capture = MultiCameraCapture(config.num_cameras)
+    capture: Capture
+    if simulate:
+        log.info("SIMULATION MODE: rendering cameras from /%s/sim/true_pose", config.device_id)
+        capture = SimulatedCapture(inst, config.device_id, config.num_cameras, config.calibrations, time_sync)
+    else:
+        capture = MultiCameraCapture(config.num_cameras)
 
     pipelines = build_pipelines(config, inst, time_sync)
     pipelines.start()
@@ -109,6 +133,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", type=Path, default=Path("config.json"))
     parser.add_argument("--calibration-dir", type=Path, default=Path("."))
+    parser.add_argument("--sim", action="store_true", help="simulate the cameras (see src/sim/simulated_capture.py)")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -118,7 +143,7 @@ def main() -> None:
     )
     logs = LogBuffer()  # recent log lines for the dashboard
     logging.getLogger().addHandler(logs)
-    run(load_local_config(args.config, args.calibration_dir), logs)
+    run(load_local_config(args.config, args.calibration_dir), logs, simulate=args.sim)
 
 
 if __name__ == "__main__":

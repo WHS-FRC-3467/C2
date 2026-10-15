@@ -65,6 +65,7 @@
 <div id="banner">Can't reach C2. Retrying…</div>
 <header>
   <h1 id="title">C2</h1>
+  <span id="sim-badge" class="badge warn" style="display:none">SIMULATION</span>
   <span id="nt-badge" class="badge">NT</span>
   <span class="stat">heartbeat <b id="heartbeat">–</b></span>
   <span class="stat">uptime <b id="uptime">–</b></span>
@@ -92,7 +93,7 @@
   </section>
 
   <div class="two-col">
-    <section><h2>Capture</h2><dl id="capture" class="kv"></dl></section>
+    <section><h2>Capture</h2><div id="sim-warnings"></div><dl id="capture" class="kv"></dl><div id="sim-settings"></div></section>
     <section><h2>NetworkTables &amp; time sync</h2><dl id="nt" class="kv"></dl></section>
   </div>
 
@@ -244,9 +245,15 @@ function renderPipelines(pipelines) {
 // ---------- capture / NT
 function renderCapture(capture, health) {
   const s = capture.settings || {};
+  const sim = Boolean(capture.simulated);
+  $("sim-badge").style.display = sim ? "" : "none";
+  $("sim-warnings").innerHTML = sim ? (capture.warnings || []).map((w) => `<div class="error">${esc(w)}</div>`).join("") : "";
+  $("sim-settings").innerHTML = sim
+    ? `<div class="subhead">simulation (NT: sim/config/…)</div><dl class="kv">${kv(Object.entries(capture.sim_settings).map(([k, v]) => [k, esc(fmtValue(v))]))}</dl>`
+    : "";
   $("capture").innerHTML = kv([
-    ["camera", capture.open ? badge("open", "ok") : badge("closed", "bad")],
-    ["device", esc(s.camera_id ?? "–")],
+    ["source", sim ? badge("simulated", "warn") : capture.open ? badge("camera open", "ok") : badge("camera closed", "bad")],
+    ["device", sim ? "–" : esc(s.camera_id ?? "–")],
     ["per-camera size", s.camera_resolution_width ? `${s.camera_resolution_width}×${s.camera_resolution_height}` : "–"],
     ["combined frame", capture.combined_frame_size ? capture.combined_frame_size.join("×") : "–"],
     ["exposure / gain", `${s.camera_exposure ?? "–"} / ${s.camera_gain ?? "–"}`],
