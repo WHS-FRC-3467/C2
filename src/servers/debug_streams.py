@@ -1,6 +1,6 @@
 """The camera streams: every camera with pipeline overlays, and each camera raw.
 
-The dashboard (servers/dashboard_server.py, on stream_port) serves all of them.
+The dashboard (servers/dashboard_server.py, on web_port) serves all of them.
 Raw streams have no overlay: handy for focusing and calibration.
 """
 

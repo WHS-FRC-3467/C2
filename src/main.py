@@ -5,7 +5,7 @@
 The flow is:
 
     MultiCameraCapture --FrameSet--> PipelineManager --> one thread per pipeline --> NT (flatbuffers)
-                                 \\-> DebugStreams --> DashboardServer (web page on stream_port)
+                                 \\-> DebugStreams --> DashboardServer (web page on web_port)
 
 See README.md for the NetworkTables layout.
 """

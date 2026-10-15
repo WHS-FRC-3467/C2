@@ -30,7 +30,7 @@ python src/main.py                # run from the repo root (config.json and cali
 | --- | --- |
 | `device_id` | NT root table, e.g. `dsv0` → `/dsv0/...`, and the NT client name |
 | `server_ip` | NT server (the robot) |
-| `stream_port` | web dashboard (see below) |
+| `web_port` | web dashboard (see below) |
 | `num_cameras` | cameras side by side in the module's frame |
 | `camera_id`, `camera_resolution_width/height`, `camera_exposure`, `camera_gain` | capture defaults until the robot publishes `/<dev>/config/*`. Width is per camera |
 | `pipelines_enabled` | default `enabled` per pipeline, e.g. `{"apriltag": true}` |
@@ -62,7 +62,7 @@ project builds its Java classes from `C2/schema/*.fbs` (its git submodule).
 
 ## Dashboard
 
-Open `http://<coprocessor>:<stream_port>/` (port 8000 by default) in a browser. It shows:
+Open `http://<coprocessor>:<web_port>/` (port 5400 by default) in a browser. It shows:
 
 - **Cameras:** a live stream per camera, with pipeline overlays or raw. Size and
   frame rate are adjustable, and you can pause the streams (they use bandwidth on

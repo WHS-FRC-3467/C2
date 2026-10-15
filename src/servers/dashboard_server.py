@@ -1,4 +1,4 @@
-"""The web dashboard on stream_port: camera streams, pipelines, status, and logs.
+"""The web dashboard on web_port: camera streams, pipelines, status, and logs.
 
 Read-only by design: the robot is the source of truth for configuration, and
 edits made here would be silently overwritten when it republishes.
@@ -65,10 +65,9 @@ class DashboardServer:
         self._logs = logs
 
     def start(self) -> None:
-        server = ThreadingHTTPServer(("", self._config.stream_port), self._handler_class())
-        server.daemon_threads = True
+        server = _DashboardHTTPServer(self._config.web_port, self)
         threading.Thread(target=server.serve_forever, name="dashboard", daemon=True).start()
-        log.info("Dashboard at http://0.0.0.0:%d", self._config.stream_port)
+        log.info("Dashboard at http://0.0.0.0:%d", self._config.web_port)
 
     # ------------------------------------------------------------------ data
 
@@ -109,7 +108,11 @@ class DashboardServer:
             "pipelines": self._pipelines.snapshot(),
         }
 
-    def _stream_for(self, path: str) -> MjpegStream | None:
+    def logs_since(self, after_id: int) -> list[dict]:
+        return self._logs.since(after_id)
+
+    def stream_for(self, path: str) -> MjpegStream | None:
+        """The stream served at ``path``, or None if there isn't one."""
         if path == "/stream":
             return self._streams.annotated
         match = _CAMERA_ROUTE.match(path)
@@ -119,39 +122,53 @@ class DashboardServer:
         streams = self._streams.annotated_cameras if kind == "stream" else self._streams.raw_cameras
         return streams[index] if index < len(streams) else None
 
-    # ------------------------------------------------------------------ HTTP
 
-    def _handler_class(dashboard) -> type[BaseHTTPRequestHandler]:  # noqa: N805
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:
-                url = urlparse(self.path)
-                query = parse_qs(url.query)
-                if url.path in ("/", "/index.html"):
-                    self._send(200, "text/html; charset=utf-8", _PAGE.read_bytes())
-                elif url.path == "/api/status":
-                    self._send_json(dashboard.status())
-                elif url.path == "/api/logs":
-                    self._send_json(dashboard._logs.since(_int(query, "after") or 0))
-                elif (stream := dashboard._stream_for(url.path)) is not None:
-                    stream.serve(self, width=_int(query, "width"), max_fps=_float(query, "fps"))
-                else:
-                    self.send_error(404)
+class _DashboardHTTPServer(ThreadingHTTPServer):
+    """Carries the dashboard so request handlers can reach it as ``self.server.dashboard``."""
 
-            def _send_json(self, data: object) -> None:
-                self._send(200, "application/json", json.dumps(_jsonable(data)).encode())
+    daemon_threads = True
 
-            def _send(self, code: int, content_type: str, body: bytes) -> None:
-                self.send_response(code)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(body)
+    def __init__(self, port: int, dashboard: DashboardServer) -> None:
+        super().__init__(("", port), _RequestHandler)
+        self.dashboard = dashboard
 
-            def log_message(self, format: str, *args) -> None:  # noqa: A002
-                pass
 
-        return Handler
+class _RequestHandler(BaseHTTPRequestHandler):
+    """One instance per request; ``http.server`` creates it and sets ``self.server``."""
+
+    @property
+    def dashboard(self) -> DashboardServer:
+        assert isinstance(self.server, _DashboardHTTPServer)
+        return self.server.dashboard
+
+    def do_GET(self) -> None:
+        dashboard = self.dashboard
+        url = urlparse(self.path)
+        query = parse_qs(url.query)
+        if url.path in ("/", "/index.html"):
+            self._send(200, "text/html; charset=utf-8", _PAGE.read_bytes())
+        elif url.path == "/api/status":
+            self._send_json(dashboard.status())
+        elif url.path == "/api/logs":
+            self._send_json(dashboard.logs_since(_int(query, "after") or 0))
+        elif (stream := dashboard.stream_for(url.path)) is not None:
+            stream.serve(self, width=_int(query, "width"), max_fps=_float(query, "fps"))
+        else:
+            self.send_error(404)
+
+    def _send_json(self, data: object) -> None:
+        self._send(200, "application/json", json.dumps(_jsonable(data)).encode())
+
+    def _send(self, code: int, content_type: str, body: bytes) -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args) -> None:  # noqa: A002 - matches the base signature
+        pass  # don't print a line per request
 
 
 def _calibration_info(calibration, camera_size: tuple[int | None, int | None]) -> dict:

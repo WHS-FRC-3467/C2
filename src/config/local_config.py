@@ -36,7 +36,7 @@ class LocalConfig:
 
     server_ip: str
 
-    stream_port: int = 8000
+    web_port: int = 5400
     """Web dashboard port (camera streams, pipelines, status, logs)."""
 
     num_cameras: int = 4
@@ -64,7 +64,7 @@ def load_local_config(config_path: Path, calibration_dir: Path) -> LocalConfig:
     return LocalConfig(
         device_id=data["device_id"],
         server_ip=data["server_ip"],
-        stream_port=int(data.get("stream_port", 8000)),
+        web_port=int(data.get("web_port", 5400)),
         num_cameras=num_cameras,
         camera_id=str(data.get("camera_id", "")),
         camera_resolution_width=int(data.get("camera_resolution_width", 0)),
