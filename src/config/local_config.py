@@ -37,8 +37,7 @@ class LocalConfig:
     server_ip: str
 
     stream_port: int = 8000
-    """Annotated stream port. Raw camera i is served on stream_port + 1 + i,
-    and the calibration upload page on stream_port + 10."""
+    """Web dashboard port (camera streams, pipelines, status, logs)."""
 
     num_cameras: int = 4
 

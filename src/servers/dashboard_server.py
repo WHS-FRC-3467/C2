@@ -82,7 +82,6 @@ class DashboardServer:
                 "id": self._config.device_id,
                 "server_ip": self._config.server_ip,
                 "num_cameras": self._config.num_cameras,
-                "calibration_upload_port": self._config.stream_port + 10,
             },
             "nt": {
                 "connected": self._inst.isConnected(),

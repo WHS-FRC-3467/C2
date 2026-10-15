@@ -70,7 +70,6 @@
   <span class="stat">uptime <b id="uptime">–</b></span>
   <span class="stat">capture <b id="capture-fps">–</b> fps</span>
   <span class="stat">time sync <b id="sync">–</b></span>
-  <span class="stat" style="margin-left:auto"><a id="calib-link" href="#" target="_blank">calibration upload</a></span>
 </header>
 
 <main>
@@ -281,7 +280,6 @@ function renderHeader(status) {
   $("uptime").textContent = duration(h.uptime_s);
   $("capture-fps").textContent = num(h.capture_fps);
   $("sync").textContent = !ts.synced ? "not synced" : ts.correction_us == null ? "synced" : `synced, ${num(ts.correction_us / 1000, 2)} ms drift corrected`;
-  $("calib-link").href = `${location.protocol}//${location.hostname}:${status.device.calibration_upload_port}/`;
 }
 
 // ---------- polling

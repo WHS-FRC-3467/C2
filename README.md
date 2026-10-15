@@ -30,13 +30,13 @@ python src/main.py                # run from the repo root (config.json and cali
 | --- | --- |
 | `device_id` | NT root table, e.g. `dsv0` → `/dsv0/...`, and the NT client name |
 | `server_ip` | NT server (the robot) |
-| `stream_port` | web dashboard (see below); calibration upload page on `stream_port+10` |
+| `stream_port` | web dashboard (see below) |
 | `num_cameras` | cameras side by side in the module's frame |
 | `camera_id`, `camera_resolution_width/height`, `camera_exposure`, `camera_gain` | capture defaults until the robot publishes `/<dev>/config/*`. Width is per camera |
 | `pipelines_enabled` | default `enabled` per pipeline, e.g. `{"apriltag": true}` |
 | `time_sync_probe_interval_s` | see [Timestamps](#timestamps). Default 10, 0 disables |
 
-Per-camera intrinsics come from `calibration_<i>.yml` (upload them on the calibration page).
+Per-camera intrinsics come from `calibration_<i>.yml` in the directory C2 is started from (`--calibration-dir` to change). Copy them onto the coprocessor (e.g. with `scp`) and restart C2.
 
 ## Code map
 
@@ -55,7 +55,7 @@ project builds its Java classes from `C2/schema/*.fbs` (its git submodule).
 | `src/pipelines/pipeline.py` | `Pipeline` base class: what a pipeline is |
 | `src/pipelines/runner.py` | runs pipelines; enable/disable/config/status over NT |
 | `src/pipelines/apriltag/` | the AprilTag pipeline (detector + its aruco_nano C++ library, tag layout, solver, encoder) |
-| `src/servers/` | web dashboard (`dashboard_server.py` + `dashboard/index.html`), MJPEG streams, calibration upload page |
+| `src/servers/` | web dashboard (`dashboard_server.py` + `dashboard/index.html`), MJPEG streams |
 | `src/core/log_buffer.py` | recent log lines, shown on the dashboard |
 | `schema/*.fbs` | flatbuffer schemas; Python is generated into `schema/<namespace>/` |
 | `tests/` | `python -m unittest discover -s tests -t .` |

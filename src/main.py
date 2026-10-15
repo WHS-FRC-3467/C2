@@ -33,7 +33,6 @@ from core.time_sync import TimeSync  # noqa: E402
 from pipelines import PIPELINE_TYPES  # noqa: E402
 from pipelines.pipeline import PipelineContext  # noqa: E402
 from pipelines.runner import PipelineManager, PipelineRunner  # noqa: E402
-from servers.calibration_upload_server import CalibrationUploadServer  # noqa: E402
 from servers.dashboard_server import DashboardServer  # noqa: E402
 from servers.debug_streams import DebugStreams  # noqa: E402
 
@@ -90,7 +89,6 @@ def run(config: LocalConfig, logs: LogBuffer) -> None:
 
     streams = DebugStreams(config.num_cameras, pipelines.overlays)
     DashboardServer(config, inst, time_sync, status, capture, pipelines, streams, logs).start()
-    CalibrationUploadServer(port=config.stream_port + 10).start()
 
     while True:
         settings = capture_settings.poll()
